@@ -16,21 +16,32 @@ class ArxivAICollector(BaseCollector):
     def __init__(self, timeout_seconds: int = 15):
         super().__init__(name="arxiv_ai", timeout_seconds=timeout_seconds)
         self.feed_urls = [
-            ("http://export.arxiv.org/rss/cs.AI", "arXiv Artificial Intelligence"),
-            ("http://export.arxiv.org/rss/cs.LG", "arXiv Machine Learning"),
+            ("https://rss.arxiv.org/rss/cs.AI", "arXiv Artificial Intelligence"),
+            ("https://rss.arxiv.org/rss/cs.LG", "arXiv Machine Learning"),
+        ]
+        self.fallback_feed_urls = [
+            ("http://export.arxiv.org/rss/cs.AI", "arXiv Artificial Intelligence (fallback)"),
+            ("http://export.arxiv.org/rss/cs.LG", "arXiv Machine Learning (fallback)"),
         ]
 
     def fetch(self) -> list[RawTopic]:
         topics: list[RawTopic] = []
         headers = {"User-Agent": "NovaStudio/3.0 (research aggregator; contact: prashantroy.dev@gmail.com)"}
 
-        for url, source_label in self.feed_urls:
+        urls_to_try = list(self.feed_urls)
+
+        for url, source_label in urls_to_try:
             try:
                 resp = requests.get(url, headers=headers, timeout=self.timeout_seconds)
                 if resp.status_code != 200:
+                    logger.warning(f"arXiv feed '{url}' returned HTTP {resp.status_code}")
                     continue
 
                 feed = feedparser.parse(resp.content)
+                if not feed.entries:
+                    logger.warning(f"arXiv feed '{url}' returned 0 entries in parsed XML.")
+                    continue
+
                 for entry in feed.entries[:8]:
                     raw_title = entry.get("title", "").strip()
                     # Clean arXiv title prefix like "arXiv:2502.12345v1 [cs.AI] Title"

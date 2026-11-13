@@ -60,7 +60,10 @@ class BaseCollector(ABC):
         logger.info(f"Collecting topics from: [bold cyan]{self.name}[/bold cyan]...")
         try:
             results = self.fetch() or self.collect()
-            logger.info(f"Successfully collected {len(results)} items from {self.name}.")
+            if results:
+                logger.info(f"Successfully collected {len(results)} items from {self.name}.")
+            else:
+                logger.info(f"Collector '{self.name}' returned 0 items.")
             return results
         except Exception as e:
             logger.warning(f"Collector '{self.name}' failed gracefully: {e}", exc_info=False)

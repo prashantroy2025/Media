@@ -99,32 +99,56 @@ def run_doctor():
 
     # 7. NASA API (Real Tiny Request)
     def check_nasa():
-        key = os.getenv("NASA_API_KEY", "DEMO_KEY")
+        key = os.getenv("NASA_API_KEY")
+        if not key:
+            return False, "NASA_API_KEY missing. Add to .env: NASA_API_KEY=your_key (from api.nasa.gov)"
         try:
             r = requests.get(f"https://api.nasa.gov/planetary/apod?api_key={key}", timeout=4)
             if r.status_code == 200:
                 return True, f"NASA APOD API working (Key: {key[:6]}...)"
             elif r.status_code == 429:
-                return False, "NASA DEMO_KEY rate limited. Add your free key to .env (api.nasa.gov)"
+                return False, "NASA key rate limited (HTTP 429)."
             return False, f"NASA API returned HTTP {r.status_code}"
         except Exception as e:
             return False, f"Connection to NASA API failed: {e}"
 
-    # 8. Keyless Media Sources (NASA Public Library & Wikimedia Commons)
+    # 8. Keyless Media Sources Reachability (Wikimedia, Openverse, NASA)
     def check_keyless_visuals():
+        statuses = []
+        # Wikimedia Commons
         try:
-            r = requests.get("https://images-api.nasa.gov/search?q=earth&media_type=image", timeout=4)
-            if r.status_code == 200:
-                return True, "Keyless public domain media (NASA & Wikimedia) ready without API keys!"
-            return False, "Keyless media endpoint unreachable"
-        except Exception as e:
-            return False, f"Keyless media check failed: {e}"
+            r_w = requests.get(
+                "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=earth&gsrnamespace=6&format=json",
+                headers={"User-Agent": "NovaStudio/4.0"},
+                timeout=4,
+            )
+            statuses.append(f"Wikimedia: {'OK' if r_w.status_code == 200 else 'HTTP ' + str(r_w.status_code)}")
+        except Exception:
+            statuses.append("Wikimedia: TIMEOUT")
+
+        # NASA Public Library
+        try:
+            r_n = requests.get("https://images-api.nasa.gov/search?q=earth&media_type=image", timeout=4)
+            statuses.append(f"NASA: {'OK' if r_n.status_code == 200 else 'HTTP ' + str(r_n.status_code)}")
+        except Exception:
+            statuses.append("NASA: TIMEOUT")
+
+        # Openverse
+        try:
+            r_o = requests.get("https://api.openverse.org/v1/images/?q=earth&page_size=1", timeout=3)
+            statuses.append(f"Openverse: {'OK' if r_o.status_code == 200 else 'HTTP ' + str(r_o.status_code)}")
+        except Exception:
+            statuses.append("Openverse: TIMEOUT")
+
+        any_ok = any("OK" in s for s in statuses)
+        detail = " | ".join(statuses)
+        return any_ok, detail
 
     # 9. Pexels Stock API (Real Tiny Request)
     def check_pexels():
         key = os.getenv("PEXELS_API_KEY")
         if not key:
-            return False, "PEXELS_API_KEY empty. Fallback to keyless NASA/Wikimedia ready."
+            return False, "PEXELS_API_KEY missing. Add to .env: PEXELS_API_KEY=your_key (from pexels.com/api)"
         try:
             r = requests.get("https://api.pexels.com/v1/curated?per_page=1", headers={"Authorization": key}, timeout=4)
             if r.status_code == 200:
@@ -137,7 +161,7 @@ def run_doctor():
     def check_pixabay():
         key = os.getenv("PIXABAY_API_KEY")
         if not key:
-            return False, "PIXABAY_API_KEY empty. Optional secondary stock provider."
+            return False, "PIXABAY_API_KEY missing. Add to .env: PIXABAY_API_KEY=your_key (from pixabay.com/api/docs)"
         try:
             r = requests.get(f"https://pixabay.com/api/?key={key}&q=space&per_page=3", timeout=4)
             if r.status_code == 200:
@@ -154,7 +178,7 @@ def run_doctor():
             return True, "Groq API key configured (llama-3.3-70b-versatile available)"
         if gemini_key:
             return True, "Gemini API key configured (gemini-2.0-flash available)"
-        return False, "No hosted LLM key found in .env (Using fast local Ollama 3B, optimal for M2)"
+        return False, "No hosted LLM key in .env. Optional: GEMINI_API_KEY=... or GROQ_API_KEY=..."
 
     # 12. Subtitle Typography Font
     def check_font():
@@ -175,21 +199,37 @@ def run_doctor():
             return True, f"{len(tracks)} track(s) in music dir (SFX will auto-generate)"
         return False, "No music tracks. Run: `python -m nova fetch-music`"
 
-    # 14. YouTube OAuth Credentials
+    # 14. YouTube OAuth Credentials & Token Validity
     def check_youtube():
         secret_file = settings.resolve_path(settings.youtube.client_secret_file)
         token_file = settings.resolve_path(settings.youtube.token_file)
-        if token_file.exists():
-            return True, f"Authorized token present at {token_file.name}"
+        alt_token_file = settings.resolve_path("data/youtube_token.json")
+
+        target_token = token_file if token_file.exists() else alt_token_file
+        if target_token.exists():
+            try:
+                from google.oauth2.credentials import Credentials
+
+                from nova.publishers.youtube import YOUTUBE_SCOPES
+                creds = Credentials.from_authorized_user_file(str(target_token), YOUTUBE_SCOPES)
+                is_refreshable = bool(creds.refresh_token)
+                if creds.valid:
+                    return True, f"Token valid & refreshable at {target_token.name}"
+                elif is_refreshable:
+                    return True, f"Token expired but refreshable at {target_token.name}"
+                return False, "Token expired and not refreshable. Run: `python -m nova auth youtube`"
+            except Exception as e:
+                return False, f"Token invalid ({e}). Run: `python -m nova auth youtube`"
+
         if secret_file.exists():
-            return True, f"Client secrets ready at {secret_file.name} (First publish will prompt browser consent)"
+            return False, f"Client secrets ready at {secret_file.name}. Run: `python -m nova auth youtube`"
         return False, "Missing credentials/client_secret.json (Required for YouTube publishing)"
 
     # 15. Instagram Graph API
     def check_instagram():
         ig_pub = InstagramPublisher(settings)
         if not ig_pub.access_token:
-            return False, "INSTAGRAM_ACCESS_TOKEN not set (Required for Reels publishing)"
+            return False, "INSTAGRAM_ACCESS_TOKEN not set. Optional: add to .env"
         ok, msg = ig_pub.check_token_expiry()
         return ok, msg
 

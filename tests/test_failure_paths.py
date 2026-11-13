@@ -41,7 +41,11 @@ def test_failure_empty_music_folder(tmp_path):
 
 
 def test_failure_llm_not_running(tmp_path):
-    """Simulates Ollama daemon being offline; falls back to deterministic template."""
+    """Simulates Ollama daemon being offline; raises ScriptGenerationFailedError (no template shipped)."""
+    import pytest
+
+    from nova.scriptwriter import ScriptGenerationFailedError
+
     settings = load_config()
     settings.llm.ollama.host = "http://127.0.0.1:9999"  # non-existent port
     db_mgr = DatabaseManager(tmp_path / "test_llm_fail.db")
@@ -58,16 +62,18 @@ def test_failure_llm_not_running(tmp_path):
     session.commit()
 
     writer = Scriptwriter(settings, db_mgr)
-    script = writer.generate_script(topic)
-
-    assert script is not None
-    assert "Offline Resilience Topic" in script.title or "Kya hai" in script.title
-    assert len(script.get_scenes()) >= 2
+    with pytest.raises(ScriptGenerationFailedError) as exc_info:
+        writer.generate_script(topic)
+    assert "refusing to ship generic template" in str(exc_info.value).lower()
     session.close()
 
 
 def test_failure_llm_invalid_json(tmp_path):
-    """Simulates LLM producing malformed non-JSON output; retry fails, fallback kicks in."""
+    """Simulates LLM producing malformed non-JSON output; raises ScriptGenerationFailedError."""
+    import pytest
+
+    from nova.scriptwriter import ScriptGenerationFailedError
+
     settings = load_config()
     db_mgr = DatabaseManager(tmp_path / "test_json_fail.db")
     session = db_mgr.session()
@@ -87,10 +93,9 @@ def test_failure_llm_invalid_json(tmp_path):
     with patch.object(
         writer, "_call_llm", return_value="I am an AI and here is some random story without any JSON braces."
     ):
-        script = writer.generate_script(topic)
-
-    assert script is not None
-    assert len(script.get_scenes()) >= 2
+        with pytest.raises(ScriptGenerationFailedError) as exc_info:
+            writer.generate_script(topic)
+    assert "refusing to ship generic template" in str(exc_info.value).lower()
     session.close()
 
 

@@ -1,8 +1,13 @@
-"""Master orchestrator pipeline for Nova Autopilot v2.0."""
+"""Master orchestrator pipeline for Nova Autopilot v6.0."""
 
 import json
+import os
+import resource
 import time
 from datetime import UTC, datetime
+
+from rich.console import Console
+from rich.table import Table
 
 from nova.alignment import ForcedAligner
 from nova.captions import CaptionGenerator
@@ -32,40 +37,51 @@ class PipelineRunner:
         self.output_dir = settings.resolve_path(settings.app.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def run_full(self, custom_topic_id: int | None = None, forced_niche: str | None = None) -> Video:
+    def run_full(
+        self,
+        custom_topic_id: int | None = None,
+        forced_niche: str | None = None,
+        skip_collect: bool = False,
+    ) -> Video:
         """Executes the complete pipeline: Sourcing -> Ranking -> Fact Script -> Voice -> Visuals -> Render -> Quality Gate -> Queue/Publish."""
         start_time = time.time()
-        logger.info("[bold cyan]=====================================================[/bold cyan]")
-        logger.info(f"[bold cyan]  STARTING NOVA AUTOPILOT PIPELINE v3.0 (DryRun={self.dry_run})[/bold cyan]")
-        logger.info("[bold cyan]=====================================================[/bold cyan]")
+        stage_timings: dict[str, float] = {}
+
+        logger.info(f"[bold cyan]Starting Nova Pipeline v6.0 (DryRun={self.dry_run})...[/bold cyan]")
 
         # Stage 1: Topic Collection
-        if not custom_topic_id:
-            logger.info("[bold yellow]STAGE 1: Collecting Shocking Facts & Science/Business News...[/bold yellow]")
+        t_stage = time.time()
+        if not custom_topic_id and not skip_collect:
+            logger.info("[bold yellow]STAGE 1: Collecting Ground Truth Facts & News...[/bold yellow]")
             run_collection(self.settings, self.db_mgr)
+        else:
+            logger.info("[bold yellow]STAGE 1: Skipping collection (topics ready in database)...[/bold yellow]")
+        stage_timings["Stage 1: Collection"] = time.time() - t_stage
 
         # Stage 2: Niche Selection & Topic Ranking
-        chosen_topic = None
+        t_stage = time.time()
+        candidate_topics: list[Topic] = []
+        selected_niche = "ai_tech"
         session = self.db_mgr.session()
         try:
             if custom_topic_id:
-                chosen_topic = session.query(Topic).filter(Topic.id == custom_topic_id).first()
-                selected_niche = chosen_topic.niche if chosen_topic and chosen_topic.niche else "ai_tech"
+                chosen = session.query(Topic).filter(Topic.id == custom_topic_id).first()
+                if chosen:
+                    candidate_topics = [chosen]
+                    selected_niche = chosen.niche or "ai_tech"
             else:
                 scheduler = NicheScheduler(self.settings, self.db_mgr)
                 selected_niche = scheduler.select_next_niche(forced_niche=forced_niche)
                 logger.info(
-                    f"[bold yellow]STAGE 2: Niche Scheduler Selected: [bold cyan]{selected_niche}[/bold cyan] -> Ranking Topics...[/bold yellow]"
+                    f"[bold yellow]STAGE 2: Niche Selected: [bold cyan]{selected_niche}[/bold cyan] -> Ranking Candidates...[/bold yellow]"
                 )
                 ranker = TopicRanker(self.settings, self.db_mgr)
-                top_topics = ranker.rank_topics(limit=1, target_niche=selected_niche)
-                if top_topics:
-                    chosen_topic = top_topics[0]
+                candidate_topics = ranker.rank_topics(limit=5, target_niche=selected_niche)
 
-            if not chosen_topic:
+            if not candidate_topics:
                 logger.warning(f"No candidate topics found for niche '{selected_niche}'. Creating seed fact topic.")
                 if selected_niche == "business":
-                    chosen_topic = Topic(
+                    seed_topic = Topic(
                         dedupe_hash="seed_sample_tsmc_chip_monopoly_2026",
                         title="How TSMC Manufactures 90 Percent of Advanced Microchips",
                         summary="In 2024, verified market reports showed TSMC manufactures over ninety percent of global advanced processors, generating tens of billions in cash flow.",
@@ -78,7 +94,7 @@ class PipelineRunner:
                         status="ranked",
                     )
                 elif selected_niche == "space_science":
-                    chosen_topic = Topic(
+                    seed_topic = Topic(
                         dedupe_hash="seed_sample_neutron_star_density_2026",
                         title="A Single Teaspoon of a Neutron Star Weighs 6 Billion Tons",
                         summary="Neutron stars are so dense that a single teaspoon of material weighs roughly 6 billion tons on Earth, equal to 900 Great Pyramids stacked together.",
@@ -91,7 +107,7 @@ class PipelineRunner:
                         status="ranked",
                     )
                 else:
-                    chosen_topic = Topic(
+                    seed_topic = Topic(
                         dedupe_hash="seed_sample_deepseek_mla_breakthrough_2026",
                         title="How DeepSeek Cut AI Training Compute by 80 Percent",
                         summary="Researchers confirmed that Multi-Head Latent Attention compresses key-value cache by 80 percent, allowing massive inference on standard hardware.",
@@ -103,26 +119,63 @@ class PipelineRunner:
                         final_score=95.0,
                         status="ranked",
                     )
-                session.add(chosen_topic)
+                session.add(seed_topic)
                 session.commit()
-                session.refresh(chosen_topic)
-
-            topic_id = chosen_topic.id
-            topic_title = chosen_topic.title
+                session.refresh(seed_topic)
+                candidate_topics = [seed_topic]
         finally:
             session.close()
+        stage_timings["Stage 2: Ranking"] = time.time() - t_stage
 
         # Stage 3: Scriptwriting (LLM + Fact Grounding & Hook Rubric)
-        logger.info(f"[bold yellow]STAGE 3: Writing Grounded Script for: '{topic_title}'...[/bold yellow]")
+        t_stage = time.time()
+        logger.info("[bold yellow]STAGE 3: Writing Bespoke Grounded Script (No Templates)...[/bold yellow]")
         writer = Scriptwriter(self.settings, self.db_mgr)
-        db_topic = self.db_mgr.session().query(Topic).filter(Topic.id == topic_id).first()
-        script = writer.generate_script(db_topic)
+        chosen_topic = None
+        script = None
+        consecutive_failures = 0
+
+        for cand_topic in candidate_topics:
+            logger.info(f"Attempting script generation for candidate #{cand_topic.id}: '{cand_topic.title}'...")
+            try:
+                script = writer.generate_script(cand_topic)
+                chosen_topic = cand_topic
+                break
+            except Exception as e:
+                consecutive_failures += 1
+                logger.warning(
+                    f"Candidate #{cand_topic.id} script generation failed ({e}). "
+                    f"Marking status='script_failed' and trying next ranked candidate..."
+                )
+                sess = self.db_mgr.session()
+                try:
+                    t_rec = sess.query(Topic).filter(Topic.id == cand_topic.id).first()
+                    if t_rec:
+                        t_rec.status = "script_failed"
+                        sess.commit()
+                finally:
+                    sess.close()
+
+                if consecutive_failures >= 3:
+                    raise RuntimeError(
+                        "Pipeline aborted: 3 consecutive candidate topics failed bespoke script generation."
+                    )
+
+        if not script or not chosen_topic:
+            raise RuntimeError(
+                f"No candidate topic in niche '{selected_niche}' could generate a passing bespoke script."
+            )
+
+        topic_id = chosen_topic.id
+        logger.info(f"Confirmed production topic: '{chosen_topic.title}' (#{topic_id})")
+        stage_timings["Stage 3: Scriptwriting"] = time.time() - t_stage
 
         # Stage 4: Voice-over (TTS with Pace Calibration & Silence Trimming)
-        logger.info("[bold yellow]STAGE 4: Synthesizing Narration & Calibrating Pace (165-185 WPM)...[/bold yellow]")
+        t_stage = time.time()
+        logger.info("[bold yellow]STAGE 4: Synthesizing Narration & Calibrating Pace (150-200 WPM)...[/bold yellow]")
         tts = TTSEngine(self.settings)
 
-        # Single source of truth: script sentences (hook is sentence 0, NO duplicate hook prepend)
+        # Single source of truth: script sentences
         sentences = script.get_sentences()
         if sentences:
             sentence_texts = [s.get("text", "").strip() for s in sentences if s.get("text", "").strip()]
@@ -138,8 +191,10 @@ class PipelineRunner:
         tts_result = tts.synthesize(combined_voiceover, raw_audio_path)
         total_duration = tts_result.duration_seconds
         logger.info(f"Total narration duration: {total_duration:.2f}s ({tts_result.wpm:.1f} WPM)")
+        stage_timings["Stage 4: Voiceover (TTS)"] = time.time() - t_stage
 
         # Stage 5: Forced Alignment & Karaoke Subtitles
+        t_stage = time.time()
         logger.info("[bold yellow]STAGE 5: Forced Alignment with faster-whisper & Subtitle Sync...[/bold yellow]")
         aligner = ForcedAligner(model_size="tiny")
         alignment_res = aligner.align(raw_audio_path, sentence_texts)
@@ -164,9 +219,11 @@ class PipelineRunner:
             subs_bundle_dir,
             watermark_text=self.settings.video.watermark_text,
         )
+        stage_timings["Stage 5: Forced Alignment"] = time.time() - t_stage
 
         # Stage 6: Sentence-Matched Visuals (Provider Gating & Relevance Scoring)
-        logger.info("[bold yellow]STAGE 6: Fetching Sentence-Matched Visuals (Pexels, Wikimedia, NASA-Gated)...[/bold yellow]")
+        t_stage = time.time()
+        logger.info("[bold yellow]STAGE 6: Fetching Sentence-Matched Visuals...[/bold yellow]")
         visuals_mgr = VisualsManager(self.settings)
         scene_video_paths = []
         attributions = []
@@ -202,6 +259,7 @@ class PipelineRunner:
                 "asset_id": asset.asset_id,
                 "relevance_score": getattr(asset, "relevance_score", 100.0),
                 "is_fallback_card": asset.is_fallback_card,
+                "diagnostic_info": getattr(asset, "diagnostic_info", {}),
             })
 
             attributions.append(
@@ -215,8 +273,10 @@ class PipelineRunner:
                     asset_url=asset.asset_url,
                 )
             )
+        stage_timings["Stage 6: Visual Matching"] = time.time() - t_stage
 
         # Stage 7: Background Music & Audio Mixing with SFX
+        t_stage = time.time()
         logger.info("[bold yellow]STAGE 7: Mixing Background Music with Ducking & Sound Design...[/bold yellow]")
         music_mgr = MusicManager(self.settings)
         final_audio_path = self.output_dir / f"master_audio_{script.id}_{timestamp_str}.aac"
@@ -240,8 +300,10 @@ class PipelineRunner:
                     asset_url=music_attr.get("source_url", ""),
                 )
             )
+        stage_timings["Stage 7: Audio Mixing"] = time.time() - t_stage
 
         # Stage 8: Hardware-Accelerated Video Assembly & Subtitle Burn-in
+        t_stage = time.time()
         logger.info("[bold yellow]STAGE 8: Hardware-Accelerated FFmpeg Video Rendering...[/bold yellow]")
         renderer = VideoRenderer(self.settings)
         final_video_path = self.output_dir / f"nova_video_{script.id}_{timestamp_str}.mp4"
@@ -261,18 +323,21 @@ class PipelineRunner:
                     p.unlink()
                 except Exception:
                     pass
+        stage_timings["Stage 8: Video Assembly"] = time.time() - t_stage
 
         # Stage 9: Thumbnail Cover Generation
+        t_stage = time.time()
         logger.info("[bold yellow]STAGE 9: Generating YouTube Shorts Thumbnail Cover...[/bold yellow]")
         thumb_gen = ThumbnailGenerator(self.settings)
         thumb_path = self.output_dir / f"thumb_{script.id}_{timestamp_str}.jpg"
         thumb_gen.generate_thumbnail(final_video_path, script.title, thumb_path)
+        stage_timings["Stage 9: Thumbnail"] = time.time() - t_stage
 
-        # Stage 10: Persist Video Record & Calculate Prime Time Publishing Slot
+        # Stage 10: Persist Video Record & Calculate Slot
+        t_stage = time.time()
         schedule_engine = ScheduleEngine(self.settings, self.db_mgr)
         sched_utc, sched_us, sched_ist = schedule_engine.calculate_next_slot()
 
-        # Generate HTML Alignment Report
         alignment_report_path = self.output_dir / f"alignment_report_{script.id}_{timestamp_str}.html"
         visuals_mgr.generate_alignment_report(
             script_id=script.id,
@@ -315,16 +380,10 @@ class PipelineRunner:
             video_id = db_video.id
         finally:
             session.close()
-
-        # Enqueue into local publish queue (for Instagram / scheduled publishing)
-        if self.settings.publishing.platforms.get("instagram", True):
-            try:
-                q_mgr = PublishQueueManager(self.settings, self.db_mgr, dry_run=self.dry_run)
-                q_mgr.enqueue_video(video_id, platform="instagram", scheduled_time_utc=sched_utc)
-            except Exception as qe:
-                logger.warning(f"Could not enqueue video #{video_id} to publish queue: {qe}")
+        stage_timings["Stage 10: Persistence"] = time.time() - t_stage
 
         # Stage 11: Quality Gate Verification & Contact Sheet
+        t_stage = time.time()
         logger.info("[bold yellow]STAGE 11: Running Quality Gate & Frame Inspection...[/bold yellow]")
         quality_gate = QualityGate(self.settings)
         session_v = self.db_mgr.session()
@@ -333,24 +392,57 @@ class PipelineRunner:
             qc_result = quality_gate.evaluate(final_video_path, curr_v)
 
             curr_v.quality_flag = qc_result.quality_flag
+
+            def _json_serial(obj):
+                if hasattr(obj, "item"):
+                    val = obj.item()
+                    if isinstance(val, (bool, int, float, str)):
+                        return val
+                if isinstance(obj, bool):
+                    return bool(obj)
+                if isinstance(obj, float):
+                    return float(obj)
+                if isinstance(obj, int):
+                    return int(obj)
+                return str(obj)
+
             curr_v.quality_gate_json = json.dumps(
                 {
-                    "passed": qc_result.passed,
-                    "quality_flag": qc_result.quality_flag,
+                    "passed": bool(qc_result.passed),
+                    "quality_flag": str(qc_result.quality_flag),
                     "checks": qc_result.checks,
-                    "wpm": qc_result.wpm,
-                    "flat_frame_ratio": qc_result.flat_frame_ratio,
-                    "contact_sheet_path": qc_result.contact_sheet_path,
+                    "wpm": float(qc_result.wpm),
+                    "flat_frame_ratio": float(qc_result.flat_frame_ratio),
+                    "contact_sheet_path": str(qc_result.contact_sheet_path or ""),
                     "failure_reasons": qc_result.failure_reasons,
-                }
+                },
+                default=_json_serial,
             )
             curr_v.contact_sheet_path = qc_result.contact_sheet_path
             session_v.commit()
         finally:
             session_v.close()
+        stage_timings["Stage 11: Quality Gate"] = time.time() - t_stage
 
         # Stage 12: Queue vs Auto-Publish Dispatch
+        t_stage = time.time()
         pub_mode = self.settings.publishing.publish_mode
+
+        # Enqueue into Instagram queue ONLY IF quality gate passed, NOT dry run, and Instagram is configured with access token
+        ig_token = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
+        ig_enabled = self.settings.publishing.platforms.get("instagram", False)
+        if qc_result.quality_flag == "passed" and not self.dry_run and ig_enabled and ig_token:
+            try:
+                q_mgr = PublishQueueManager(self.settings, self.db_mgr, dry_run=False)
+                q_mgr.enqueue_video(video_id, platform="instagram", scheduled_time_utc=sched_utc)
+                logger.info(f"Enqueued Video #{video_id} for verified Instagram publishing slot: {sched_us}")
+            except Exception as qe:
+                logger.warning(f"Could not enqueue video #{video_id} to publish queue: {qe}")
+        elif self.dry_run:
+            logger.info("[DRY-RUN] Instagram enqueue bypassed in dry-run mode.")
+        elif not ig_token or not ig_enabled:
+            logger.debug("Instagram publishing bypassed (not configured or no INSTAGRAM_ACCESS_TOKEN).")
+
         if self.dry_run:
             logger.info("[DRY-RUN] Executing mock publisher...")
             pub_mgr = PublishingManager(self.settings, self.db_mgr, dry_run=True)
@@ -373,11 +465,29 @@ class PipelineRunner:
             logger.info(
                 "[bold cyan]Publish mode is 'review'. Video placed in Review Queue for user approval.[/bold cyan]"
             )
+        stage_timings["Stage 12: Dispatch"] = time.time() - t_stage
 
-        elapsed = time.time() - start_time
-        logger.info(
-            f"[bold green]✨ Pipeline completed successfully in {elapsed:.1f}s (Video ID #{video_id})![/bold green]"
+        # Summary Table & Peak RAM Metrics
+        peak_ram_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024 * 1024)
+        total_time = time.time() - start_time
+
+        console = Console()
+        summary_table = Table(title=f"Nova Autopilot - Video #{video_id} Stage Execution Summary", show_lines=True)
+        summary_table.add_column("Pipeline Stage", style="bold white", width=34)
+        summary_table.add_column("Duration (s)", justify="right", style="cyan", width=14)
+        summary_table.add_column("Status", justify="center", style="green", width=14)
+
+        for s_name, s_dur in stage_timings.items():
+            summary_table.add_row(s_name, f"{s_dur:.2f}s", "✓ DONE")
+
+        summary_table.add_section()
+        summary_table.add_row(
+            "[bold]TOTAL RUNTIME[/bold]", f"[bold]{total_time:.2f}s[/bold]", "[bold green]COMPLETED[/bold green]"
         )
+        summary_table.add_row(
+            "[bold]PEAK RAM (M2)[/bold]", f"[bold]{peak_ram_mb:.1f} MB[/bold]", "[bold yellow]OPTIMAL[/bold yellow]"
+        )
+        console.print(summary_table)
 
         session_out = self.db_mgr.session()
         try:

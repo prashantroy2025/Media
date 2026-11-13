@@ -18,7 +18,7 @@ class YouTubeTrendingCollector(BaseCollector):
 
     def fetch(self) -> list[RawTopic]:
         if not self.api_key:
-            logger.debug("YOUTUBE_API_KEY not set; skipping YouTube trending collector.")
+            logger.info("YOUTUBE_API_KEY not configured in .env; skipping YouTube trending collector.")
             return []
 
         youtube = build("youtube", "v3", developerKey=self.api_key)

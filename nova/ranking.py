@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from nova.config import NovaSettings
 from nova.db import DatabaseManager, Publication, Topic
 from nova.logging_setup import logger
+from nova.topic_safety import evaluate_topic_safety
 
 SHOCK_WORDS = {
     "billion",
@@ -112,6 +113,17 @@ class TopicRanker:
             eligible_topics: list[Topic] = []
 
             for topic in candidate_topics:
+                # 0. Topic Safety Filter (skip politicians, scandals, violence, advice)
+                is_safe, safety_reason, _ = evaluate_topic_safety(
+                    topic.title, topic.summary or "", topic.niche or "ai_tech"
+                )
+                if not is_safe:
+                    logger.info(f"Skipping unsafe topic '{topic.title[:60]}...': {safety_reason}")
+                    topic.status = "unsafe_skipped"
+                    topic.safety_status = "unsafe"
+                    topic.safety_reason = safety_reason
+                    continue
+
                 # 1. 60-day Near-Duplicate Filter (Jaccard > 0.45)
                 is_duplicate = False
                 for u_title in used_titles:

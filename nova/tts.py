@@ -11,6 +11,7 @@ import edge_tts
 
 from nova.config import NovaSettings
 from nova.logging_setup import logger
+from nova.utils.pacing import compute_wpm, count_words
 
 
 @dataclass
@@ -53,27 +54,36 @@ class TTSEngine:
             logger.warning(f"edge-tts synthesis failed ({e}). Attempting offline fallback 'say'...")
             result = self._synthesize_macos_say(text, out_p)
 
-        # Pace Quality Gate: check WPM
-        if retry_count < 2:
+        # Pace Quality Gate: check WPM with up to 3 retries (4 attempts)
+        if retry_count < 3:
+            current_offset = (
+                int(re.search(r"([+-]?\d+)", self.rate).group(1)) if re.search(r"([+-]?\d+)", self.rate) else 0
+            )
             if result.wpm < self.min_wpm:
+                delta = abs(self.target_wpm - result.wpm)
+                step = max(5, min(15, int(delta * 0.4)))
+                new_offset = min(35, current_offset + step)
+                self.rate = f"{new_offset:+d}%"
                 logger.warning(
-                    f"Audio pace too slow ({result.wpm:.1f} WPM < {self.min_wpm} WPM). Increasing rate by +10%..."
+                    f"Audio pace too slow ({result.wpm:.1f} WPM < {self.min_wpm} WPM). "
+                    f"Increasing rate to {self.rate} (Retry {retry_count + 1}/3)..."
                 )
-                current_offset = (
-                    int(re.search(r"([+-]?\d+)", self.rate).group(1)) if re.search(r"([+-]?\d+)", self.rate) else 0
-                )
-                self.rate = f"+{current_offset + 10}%"
                 return self.synthesize(text, output_path, retry_count + 1)
             elif result.wpm > self.max_wpm:
-                logger.warning(
-                    f"Audio pace too fast ({result.wpm:.1f} WPM > {self.max_wpm} WPM). Decreasing rate by -10%..."
-                )
-                current_offset = (
-                    int(re.search(r"([+-]?\d+)", self.rate).group(1)) if re.search(r"([+-]?\d+)", self.rate) else 0
-                )
-                new_offset = max(-10, current_offset - 10)
+                delta = abs(result.wpm - self.target_wpm)
+                step = max(5, min(15, int(delta * 0.4)))
+                new_offset = max(-25, current_offset - step)
                 self.rate = f"{new_offset:+d}%"
+                logger.warning(
+                    f"Audio pace too fast ({result.wpm:.1f} WPM > {self.max_wpm} WPM). "
+                    f"Decreasing rate to {self.rate} (Retry {retry_count + 1}/3)..."
+                )
                 return self.synthesize(text, output_path, retry_count + 1)
+        elif result.wpm < self.min_wpm or result.wpm > self.max_wpm:
+            logger.error(
+                f"TTS speaking pace failed to converge after 3 retries (Final: {result.wpm:.1f} WPM, "
+                f"Target range: {self.min_wpm}-{self.max_wpm} WPM)."
+            )
 
         return result
 
@@ -133,8 +143,8 @@ class TTSEngine:
         else:
             adjusted_timings = self._estimate_word_timings(text, d_trimmed)
 
-        word_count = len(text.split())
-        wpm = (word_count / d_trimmed) * 60.0 if d_trimmed > 0 else 0.0
+        word_count = count_words(text)
+        wpm = compute_wpm(text, d_trimmed)
 
         logger.info(
             f"TTS Complete: Duration: {d_trimmed:.2f}s (Trimmed from {d_orig:.2f}s). "

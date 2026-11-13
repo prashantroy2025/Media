@@ -164,7 +164,29 @@ def test_fallback_template():
     ]
     fallback = writer._fallback_template(topic, facts)
     assert fallback is not None
+    assert fallback.is_template is True
     assert "Neutron Star" in fallback.title or "Shocking" in fallback.title
     assert len(fallback.scenes) >= 3
     assert len(fallback.hook.split()) <= 12
     assert fallback.facts_used[0].source_url == "https://science.nasa.gov"
+
+
+def test_generation_failure_raises_error_no_template():
+    import pytest
+
+    from nova.scriptwriter import ScriptGenerationFailedError
+
+    settings = load_config()
+    writer = Scriptwriter(settings, DatabaseManager(":memory:"))
+    # Force _call_llm to return empty or garbage
+    writer._call_llm = lambda *args, **kwargs: "invalid json string"
+
+    topic = Topic(
+        title="Valid Science Topic",
+        summary="A single teaspoon of a neutron star weighs six billion tons.",
+        source_name="nasa",
+        source_url="https://science.nasa.gov",
+    )
+    with pytest.raises(ScriptGenerationFailedError) as exc_info:
+        writer.generate_script(topic, num_candidates=1)
+    assert "refusing to ship generic template" in str(exc_info.value).lower()

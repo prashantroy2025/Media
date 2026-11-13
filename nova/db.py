@@ -34,7 +34,9 @@ class Topic(Base):
     niche = Column(String(50), default="ai_tech", index=True)
     raw_score = Column(Float, default=0.0)
     final_score = Column(Float, default=0.0)
-    status = Column(String(30), default="pending")  # pending, ranked, used, skipped
+    status = Column(String(30), default="pending")  # pending, ranked, used, skipped, unsafe_skipped
+    safety_status = Column(String(30), default="safe")  # safe, flagged, unsafe
+    safety_reason = Column(String(500), default="")
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     used_at = Column(DateTime, nullable=True)
 
@@ -62,6 +64,8 @@ class Script(Base):
     facts_used_json = Column(Text, default="[]")
     language = Column(String(20), default="en")
     model_used = Column(String(50), default="llama3.2:3b")
+    script_quality_score = Column(Float, default=0.0)
+    is_template = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
     topic = relationship("Topic", back_populates="scripts")
@@ -331,6 +335,10 @@ class DatabaseManager:
                 if existing_t_cols:
                     if "niche" not in existing_t_cols:
                         conn.exec_driver_sql("ALTER TABLE topics ADD COLUMN niche VARCHAR(50) DEFAULT 'ai_tech'")
+                    if "safety_status" not in existing_t_cols:
+                        conn.exec_driver_sql("ALTER TABLE topics ADD COLUMN safety_status VARCHAR(30) DEFAULT 'safe'")
+                    if "safety_reason" not in existing_t_cols:
+                        conn.exec_driver_sql("ALTER TABLE topics ADD COLUMN safety_reason VARCHAR(500) DEFAULT ''")
 
                 # Check scripts columns
                 res = conn.exec_driver_sql("PRAGMA table_info(scripts)")
@@ -352,6 +360,10 @@ class DatabaseManager:
                         conn.exec_driver_sql("ALTER TABLE scripts ADD COLUMN inspiration_ref_ids_json TEXT DEFAULT '[]'")
                     if "prompt_version" not in existing_cols:
                         conn.exec_driver_sql("ALTER TABLE scripts ADD COLUMN prompt_version VARCHAR(50) DEFAULT 'v4.0'")
+                    if "script_quality_score" not in existing_cols:
+                        conn.exec_driver_sql("ALTER TABLE scripts ADD COLUMN script_quality_score FLOAT DEFAULT 0.0")
+                    if "is_template" not in existing_cols:
+                        conn.exec_driver_sql("ALTER TABLE scripts ADD COLUMN is_template BOOLEAN DEFAULT 0")
 
                 # Check videos columns
                 res_v = conn.exec_driver_sql("PRAGMA table_info(videos)")
@@ -364,6 +376,10 @@ class DatabaseManager:
                     if "contact_sheet_path" not in existing_v_cols:
                         conn.exec_driver_sql(
                             "ALTER TABLE videos ADD COLUMN contact_sheet_path VARCHAR(1000) DEFAULT ''"
+                        )
+                    if "sync_frames_dir" not in existing_v_cols:
+                        conn.exec_driver_sql(
+                            "ALTER TABLE videos ADD COLUMN sync_frames_dir VARCHAR(1000) DEFAULT ''"
                         )
                     if "subtitle_sync_stats_json" not in existing_v_cols:
                         conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN subtitle_sync_stats_json TEXT DEFAULT '{}'")

@@ -41,6 +41,7 @@ def main():
         choices=["ai_tech", "business", "space_science"],
         help="Force specific niche (default: deficit-balanced)",
     )
+    p_run.add_argument("--skip-collect", action="store_true", help="Skip upstream collection stage")
 
     # Command: dry-run
     p_dry = subparsers.add_parser(
@@ -52,6 +53,7 @@ def main():
         choices=["ai_tech", "business", "space_science"],
         help="Force specific niche (default: deficit-balanced)",
     )
+    p_dry.add_argument("--skip-collect", action="store_true", help="Skip upstream collection stage")
 
     # Command: niches
     p_niches = subparsers.add_parser(
@@ -114,6 +116,23 @@ def main():
         "track-references", help="Query official YouTube Data API for reference channel metadata & outliers"
     )
 
+    # Command: diag-visuals
+    p_diag = subparsers.add_parser("diag-visuals", help="Diagnose footage providers and scores for a visual query")
+    p_diag.add_argument("query", type=str, help="Search query string to test across all providers")
+    p_diag.add_argument(
+        "--niche", choices=["ai_tech", "business", "space_science"], default="ai_tech", help="Content niche"
+    )
+
+    # Command: auth
+    p_auth = subparsers.add_parser("auth", help="Authenticate with platform APIs (e.g. YouTube OAuth)")
+    auth_sub = p_auth.add_subparsers(dest="auth_platform", help="Target platform to authenticate")
+    auth_sub.add_parser("youtube", help="Run YouTube Data API OAuth desktop consent flow")
+
+    # Command: upload-test
+    subparsers.add_parser(
+        "upload-test", help="Upload a private 3-second test clip to YouTube and print studio edit link"
+    )
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -127,6 +146,7 @@ def main():
         is_dry = args.command == "dry-run"
         count = max(1, getattr(args, "count", 1))
         forced_niche = getattr(args, "niche", None)
+        skip_collect = getattr(args, "skip_collect", False)
         runner = PipelineRunner(settings, db_mgr, dry_run=is_dry)
 
         console.print(
@@ -134,7 +154,7 @@ def main():
         )
         for i in range(1, count + 1):
             console.print(f"\n[bold yellow]=== VIDEO {i}/{count} ===[/bold yellow]")
-            video = runner.run_full(forced_niche=forced_niche)
+            video = runner.run_full(forced_niche=forced_niche, skip_collect=skip_collect)
             console.print(f"[bold green]✓ Video #{video.id} generated at: {video.video_path}[/bold green]")
             if video.quality_flag != "passed":
                 console.print(f"[bold red]⚠ Warning: Quality flag is '{video.quality_flag}'[/bold red]")
@@ -336,6 +356,25 @@ def main():
             )
 
         console.print(table)
+
+    elif args.command == "diag-visuals":
+        from nova.visuals import VisualsManager
+
+        vm = VisualsManager(settings)
+        vm.diag_visuals(args.query, niche=args.niche)
+
+    elif args.command == "auth":
+        if getattr(args, "auth_platform", None) == "youtube" or not getattr(args, "auth_platform", None):
+            from nova.publishers.youtube import run_youtube_auth
+
+            run_youtube_auth(settings)
+        else:
+            console.print(f"[red]Unknown auth platform: {args.auth_platform}[/red]")
+
+    elif args.command == "upload-test":
+        from nova.publishers.youtube import upload_test_video
+
+        upload_test_video(settings, db_mgr)
 
 
 if __name__ == "__main__":

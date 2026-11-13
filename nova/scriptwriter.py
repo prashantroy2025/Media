@@ -21,10 +21,22 @@ from pydantic import BaseModel, Field, field_validator
 from nova.collectors.wikipedia import WikipediaCollector
 from nova.config import PROJECT_ROOT, NovaSettings
 from nova.db import DatabaseManager, Script, Topic
+from nova.facts import (
+    StructuredFact,
+    extract_structured_facts,
+    validate_fact,
+    verify_fact_fidelity,
+)
 from nova.logging_setup import logger
 from nova.patterns.angles import AngleGenerator, OriginalityGuard, ProposedAngle
 from nova.patterns.library import PatternLibrary
+from nova.utils.pacing import count_words
 from nova.utils.units import augment_text_with_dual_units
+
+
+class ScriptGenerationFailedError(Exception):
+    """Raised when LLM script generation fails quality gates and no contract-compliant script can be built."""
+    pass
 
 # ---------------------------------------------------------------------------
 # Data Schemas
@@ -43,25 +55,6 @@ class VisualIntentSchema(BaseModel):
     on_screen_label: str | None = Field(default=None, description="Optional 1-3 word high-impact text or number")
 
 
-class StructuredFact(BaseModel):
-    id: str = Field(default="F1", description="Unique fact identifier e.g. F1, F2")
-    claim: str = Field(default="", description="Plain-English factual statement")
-    fact: str = Field(default="", description="Alias for claim")
-    subject: str = Field(default="", description="Core subject entity of the fact")
-    action: str = Field(default="", description="Action or verb performed")
-    object: str = Field(default="", description="Direct object if applicable")
-    outcome_or_result: str = Field(default="", description="Concrete result or consequence")
-    cause_if_any: str | None = Field(default=None, description="Underlying cause or trigger")
-    time_context: str | None = Field(default=None, description="e.g. in 2024, as of Q3 2025")
-    number_with_unit: str | None = Field(default=None, description="e.g. 6 billion tons, 80 percent")
-    source_url: str = Field(default="", description="Source URL where fact was retrieved")
-    excerpt: str = Field(default="", description="Original supporting excerpt")
-
-    def model_post_init(self, __context):
-        if not self.claim and self.fact:
-            self.claim = self.fact
-        elif not self.fact and self.claim:
-            self.fact = self.claim
 
 
 class SpineBeatSchema(BaseModel):
@@ -129,6 +122,8 @@ class GeneratedScriptSchema(BaseModel):
     description: str = Field(default="")
     facts_used: list[StructuredFact] = Field(default_factory=list)
     facts_table: list[StructuredFact] = Field(default_factory=list)
+    script_quality_score: float = Field(default=0.0)
+    is_template: bool = Field(default=False)
 
     @field_validator("hashtags", mode="before")
     @classmethod
@@ -206,83 +201,6 @@ def check_duplicate_sentences(sentences: list[str]) -> tuple[bool, str]:
     return True, ""
 
 
-def verify_fact_fidelity(sentence: str, fact: StructuredFact) -> tuple[bool, str]:
-    """Validates that a sentence written from a fact contains the same subject, action,
-
-    and outcome (or clear synonyms/stems), preserving causal meaning.
-    Example: 'the apple fell down and then it spoiled' must preserve apple + fell + spoiled/rotted.
-    """
-    s_lower = sentence.lower()
-
-    # 1. Subject check
-    if fact.subject:
-        subj_tokens = [w for w in re.sub(r"[^\w\s]", "", fact.subject.lower()).split() if len(w) > 3]
-        if subj_tokens and not any(t in s_lower for t in subj_tokens):
-            return False, f"Sentence missing required fact subject '{fact.subject}'"
-
-    # 2. Action check
-    if fact.action:
-        action_words = [w for w in re.sub(r"[^\w\s]", "", fact.action.lower()).split() if len(w) > 3]
-        if action_words:
-            matched_action = False
-            for aw in action_words:
-                stem = aw[:4] if len(aw) >= 4 else aw
-                if stem in s_lower:
-                    matched_action = True
-                    break
-            # Common synonyms
-            synonyms = {
-                "fell": ["fell", "fall", "dropped", "drop"],
-                "swim": ["swim", "swimming", "swam", "travel"],
-                "drove": ["drove", "driven", "completed", "logged"],
-                "combines": ["combines", "packs", "contains", "features"],
-                "resolved": ["resolved", "solved", "fixed"],
-                "generated": ["generated", "reported", "produced", "earned"],
-                "weighs": ["weighs", "weigh", "mass"],
-                "detected": ["detected", "found", "discovered", "spotted"],
-            }
-            if not matched_action:
-                for syns in synonyms.values():
-                    if any(s in fact.action.lower() for s in syns):
-                        if any(s in s_lower for s in syns):
-                            matched_action = True
-                            break
-            if not matched_action:
-                return False, f"Sentence missing required fact action '{fact.action}'"
-
-    # 3. Outcome check
-    if fact.outcome_or_result:
-        outcome_words = [w for w in re.sub(r"[^\w\s]", "", fact.outcome_or_result.lower()).split() if len(w) > 4]
-        if outcome_words:
-            matched_outcome = False
-            for ow in outcome_words:
-                stem = ow[:4] if len(ow) >= 4 else ow
-                if stem in s_lower:
-                    matched_outcome = True
-                    break
-            outcome_syns = {
-                "spoiled": ["spoiled", "rotted", "bad", "decayed", "lost"],
-                "rotted": ["spoiled", "rotted", "bad", "decayed", "destroy"],
-            }
-            if not matched_outcome:
-                for syns in outcome_syns.values():
-                    if any(s in fact.outcome_or_result.lower() for s in syns):
-                        if any(s in s_lower for s in syns):
-                            matched_outcome = True
-                            break
-            if not matched_outcome:
-                return False, f"Sentence missing required fact outcome '{fact.outcome_or_result}'"
-
-    # 4. Number check
-    if fact.number_with_unit:
-        nums = re.findall(r"\d+", fact.number_with_unit)
-        if nums and not any(n in s_lower for n in nums):
-            num_words = {"6": "six", "80": "eighty", "50": "fifty", "208": "two hundred", "2": "two"}
-            has_word_num = any(num_words.get(n, "---") in s_lower for n in nums)
-            if not has_word_num:
-                return False, f"Sentence missing numeric measurement '{fact.number_with_unit}'"
-
-    return True, ""
 
 
 def evaluate_adjacent_coherence(s1: str, s2: str, connects_to_prev: str = "") -> tuple[float, str]:
@@ -370,6 +288,7 @@ class Scriptwriter:
         self.orig_guard = OriginalityGuard(db_mgr)
         self.patterns = PatternLibrary(settings, db_mgr)
         self.prompts_dir = PROJECT_ROOT / "prompts"
+        self.last_model_used = ""
 
     def _load_persona(self) -> str:
         if self.persona_file.exists():
@@ -383,52 +302,48 @@ class Scriptwriter:
         return ""
 
     def research_facts(self, topic: Topic) -> list[StructuredFact]:
-        """Collects structured facts from the topic and secondary collectors."""
-        facts: list[StructuredFact] = []
+        """Collects genuine structured facts directly from verified source text using NLP.
+        Never invents generic placeholder verbs or outcomes.
+        """
         clean_title = topic.title.strip()
+        clean_summary = (topic.summary or "").strip()
+        niche = topic.niche or "ai_tech"
 
-        # Primary fact from topic
-        primary_numbers = _extract_numbers(topic.summary or topic.title)
-        num_str = primary_numbers[0] if primary_numbers else None
-
-        facts.append(
-            StructuredFact(
-                id="F1",
-                claim=topic.summary or topic.title,
-                subject=clean_title.split()[0] if clean_title else "Subject",
-                action="reveals",
-                object="key findings",
-                outcome_or_result="demonstrates measurable change",
-                number_with_unit=num_str,
-                source_url=topic.source_url or "https://en.wikipedia.org",
-                excerpt=topic.summary or topic.title,
-            )
+        facts = extract_structured_facts(
+            topic_title=clean_title,
+            topic_summary=clean_summary,
+            source_url=topic.source_url or "https://en.wikipedia.org",
+            niche=niche,
         )
 
-        # Secondary search for value-add requirement
+        valid_facts: list[StructuredFact] = []
+        for f in facts:
+            is_valid, reason = validate_fact(f, topic_title=clean_title)
+            if is_valid:
+                valid_facts.append(f)
+            else:
+                logger.warning(f"Dropping invalid fact: {reason}")
+
+        # Secondary search from Wikipedia if available
         try:
             wiki = WikipediaCollector(self.settings)
             wiki_summary = wiki.fetch_summary(clean_title)
-            if wiki_summary and wiki_summary != topic.summary:
-                sec_nums = _extract_numbers(wiki_summary)
-                sec_num_str = sec_nums[0] if sec_nums else None
-                facts.append(
-                    StructuredFact(
-                        id="F2",
-                        claim=wiki_summary[:200],
-                        subject=clean_title.split()[0] if clean_title else "Topic",
-                        action="provides context for",
-                        object="the background history",
-                        outcome_or_result="corroborates primary data",
-                        number_with_unit=sec_num_str,
-                        source_url="https://en.wikipedia.org",
-                        excerpt=wiki_summary[:200],
-                    )
+            if wiki_summary and wiki_summary != clean_summary:
+                sec_facts = extract_structured_facts(
+                    topic_title=clean_title,
+                    topic_summary=wiki_summary,
+                    source_url="https://en.wikipedia.org",
+                    niche=niche,
                 )
+                for sf in sec_facts:
+                    sf.id = f"F{len(valid_facts) + 1}"
+                    is_valid_s, _ = validate_fact(sf, topic_title=clean_title)
+                    if is_valid_s and not any(vf.claim == sf.claim for vf in valid_facts):
+                        valid_facts.append(sf)
         except Exception:
             pass
 
-        return facts
+        return valid_facts
 
     def generate_script(self, topic: Topic, num_candidates: int = 1) -> Script:
         """Executes multi-stage contract-based scriptwriting pipeline with verification and best-of-N selection."""
@@ -437,6 +352,10 @@ class Scriptwriter:
 
         # 1. Fact Table & Angle Selection
         researched_facts = self.research_facts(topic)
+        if not researched_facts:
+            raise ScriptGenerationFailedError(
+                f"No ground truth facts could be extracted for topic '{topic.title}'. Skipping topic."
+            )
         chosen_angle = self.angle_gen.choose_best_angle(topic)
 
         # 2. Build system & user prompts
@@ -461,6 +380,8 @@ class Scriptwriter:
                         if passed_qc:
                             if score > best_score:
                                 best_score = score
+                                parsed.script_quality_score = score
+                                parsed.is_template = False
                                 best_script_data = parsed
                             break
                         else:
@@ -471,8 +392,11 @@ class Scriptwriter:
                     error_context = str(e)
 
         if not best_script_data:
-            logger.warning("LLM generation did not produce a fully passing script. Using contract-compliant template.")
-            best_script_data = self._fallback_template(topic, researched_facts, niche, chosen_angle)
+            self._unload_llm()
+            raise ScriptGenerationFailedError(
+                f"LLM generation did not produce a passing bespoke script for '{topic.title}' "
+                f"after {num_candidates} candidate(s). Refusing to ship generic template."
+            )
 
         # 3. Post-processing (dual units & disclaimer)
         if niche == "space_science":
@@ -488,7 +412,7 @@ class Scriptwriter:
         self._unload_llm()
 
         # 4. Save to database
-        return self._persist_script(best_script_data, topic, chosen_angle.angle_type)
+        return self._persist_script(best_script_data, topic, chosen_angle.angle_type, facts=researched_facts)
 
     def verify_script(
         self,
@@ -499,15 +423,22 @@ class Scriptwriter:
         """Runs the 6-stage verification stack:
 
         1. Duplicate sentence guard
-        2. Fact fidelity (apple fell & spoiled)
-        3. Adjacent-pair coherence critic
-        4. Readability & word count
-        5. Safety & business compliance
-        6. Originality guard
+        2. Hook length constraint (<= 12 words)
+        3. Fact fidelity (apple fell & spoiled)
+        4. Adjacent-pair coherence critic
+        5. Readability & word count
+        6. Safety & business compliance
+        7. Originality guard
         """
         all_sentences = [s.text for s in script.sentences]
         if not all_sentences:
             return False, "Script has no sentences", 0.0
+
+        # Hook length check (strict <= 12 words)
+        hook_text = script.sentences[0].text if script.sentences else script.hook
+        hook_words = count_words(hook_text)
+        if hook_words > 12:
+            return False, f"Hook exceeds 12 words limit ({hook_words} words: '{hook_text}')", 0.0
 
         # 1. Duplicate guard
         is_dup_free, dup_msg = check_duplicate_sentences(all_sentences)
@@ -607,9 +538,11 @@ STRUCTURED FACT TABLE (GROUND TRUTH):
 
 STRICT INSTRUCTIONS:
 - Generate an ordered list of 4 to 6 sentences.
-- Sentence 0 is the hook.
+- Sentence 0 is the hook (STRICT MAXIMUM 12 WORDS. A hook exceeding 12 words will be instantly rejected!).
 - The hook asks or sets up tension; the final sentences explicitly resolve it.
-- Every sentence must have a concrete 'visual_intent' with 3 queries.
+- FACT GROUNDING: Only assign fact_ids (e.g. ["F1"]) to a sentence if that sentence explicitly mentions that fact's Subject and Action/Outcome.
+- ORIGINALITY: Write in your own words. Never copy long phrases verbatim from the source text.
+- Every sentence must have a concrete 'visual_intent' with 3 queries. Never use placeholder words like "concrete noun".
 - OUTPUT STRICT JSON ONLY adhering to the schema. No markdown codeblocks.
 
 Schema format:
@@ -625,10 +558,10 @@ Schema format:
       "connects_to_prev": "Opening line",
       "new_information": "The surprising premise",
       "visual_intent": {{
-        "main_subject": "concrete noun",
-        "action_or_state": "visible motion",
-        "setting": "environment",
-        "queries": ["specific query 1", "specific query 2", "broad query 3"],
+        "main_subject": "exact physical subject e.g. microchip processor or telescope lens",
+        "action_or_state": "physical motion or state e.g. glowing or rotating",
+        "setting": "physical environment e.g. cleanroom laboratory or deep space",
+        "queries": ["specific footage search term 1", "broader footage search term 2", "context footage search term 3"],
         "on_screen_label": "Key Stat"
       }}
     }}
@@ -639,47 +572,75 @@ Schema format:
 }}"""
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
-        provider = self.settings.llm.provider
-        if provider == "gemini" or (self.settings.llm.gemini.api_key and provider == "gemini"):
+        # 1. Try Gemini hosted if configured
+        if self.settings.llm.gemini.api_key:
             api_key = self.settings.llm.gemini.api_key
-            if api_key:
-                model_name = self.settings.llm.gemini.model or "gemini-2.5-flash"
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-                payload = {
-                    "systemInstruction": {"parts": [{"text": system_prompt}]},
-                    "contents": [{"parts": [{"text": user_prompt}]}],
-                    "generationConfig": {"temperature": 0.5, "responseMimeType": "application/json"},
-                }
-                try:
-                    with httpx.Client(timeout=self.settings.llm.gemini.timeout_seconds) as client:
-                        res = client.post(url, json=payload)
-                        if res.status_code == 200:
-                            data = res.json()
-                            candidates = data.get("candidates", [])
-                            if candidates and "content" in candidates[0]:
-                                parts = candidates[0]["content"].get("parts", [])
-                                if parts:
-                                    return parts[0].get("text", "")
-                        logger.warning(f"Gemini API returned status {res.status_code}: {res.text[:200]}")
-                except Exception as e:
-                    logger.warning(f"Gemini API call failed: {e}")
-
-        if provider == "ollama":
-            url = f"{self.settings.llm.ollama.host}/api/generate"
+            model_name = self.settings.llm.gemini.model or "gemini-2.0-flash"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             payload = {
-                "model": self.settings.llm.ollama.model,
-                "system": system_prompt,
-                "prompt": user_prompt,
-                "stream": False,
-                "format": "json",
-                "keep_alive": 0,
-                "options": {"temperature": 0.5, "num_predict": 1200},
+                "systemInstruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"parts": [{"text": user_prompt}]}],
+                "generationConfig": {"temperature": 0.5, "responseMimeType": "application/json"},
             }
-            with httpx.Client(timeout=self.settings.llm.ollama.timeout_seconds) as client:
-                res = client.post(url, json=payload)
-                res.raise_for_status()
-                return res.json().get("response", "")
-        return ""
+            try:
+                with httpx.Client(timeout=6.0) as client:
+                    res = client.post(url, json=payload)
+                    if res.status_code == 200:
+                        data = res.json()
+                        candidates = data.get("candidates", [])
+                        if candidates and "content" in candidates[0]:
+                            parts = candidates[0]["content"].get("parts", [])
+                            if parts:
+                                self.last_model_used = f"hosted/{model_name}"
+                                logger.info(f"Script generated via hosted Gemini: {model_name}")
+                                return parts[0].get("text", "")
+            except Exception as e:
+                logger.info(f"Hosted Gemini unavailable ({e}). Falling back to local Ollama.")
+
+        # 2. Try Groq hosted if configured
+        if self.settings.llm.groq.api_key:
+            groq_key = self.settings.llm.groq.api_key
+            model_name = self.settings.llm.groq.model or "llama-3.3-70b-versatile"
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            payload = {
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.5,
+            }
+            try:
+                with httpx.Client(timeout=6.0, headers={"Authorization": f"Bearer {groq_key}"}) as client:
+                    res = client.post(url, json=payload)
+                    if res.status_code == 200:
+                        data = res.json()
+                        choice = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        if choice:
+                            self.last_model_used = f"hosted/{model_name}"
+                            logger.info(f"Script generated via hosted Groq: {model_name}")
+                            return choice
+            except Exception as e:
+                logger.info(f"Hosted Groq unavailable ({e}). Falling back to local Ollama.")
+
+        # 3. Local Ollama (default local execution on Apple Silicon)
+        url = f"{self.settings.llm.ollama.host}/api/generate"
+        payload = {
+            "model": self.settings.llm.ollama.model,
+            "system": system_prompt,
+            "prompt": user_prompt,
+            "stream": False,
+            "format": "json",
+            "keep_alive": 0,
+            "options": {"temperature": 0.5, "num_predict": 1200},
+        }
+        self.last_model_used = self.settings.llm.ollama.model
+        logger.info(f"Script generating via local Ollama: {self.settings.llm.ollama.model}")
+        with httpx.Client(timeout=self.settings.llm.ollama.timeout_seconds) as client:
+            res = client.post(url, json=payload)
+            res.raise_for_status()
+            return res.json().get("response", "")
 
     def _unload_llm(self):
         try:
@@ -801,14 +762,24 @@ Schema format:
             description=f"Deep dive into {topic.title if topic else 'breakthrough'}. All claims verified from primary sources. #Shorts",
             facts_used=facts or [f1],
             facts_table=facts or [f1],
+            is_template=True,
+            script_quality_score=25.0,
         )
 
-    def _persist_script(self, script_data: GeneratedScriptSchema, topic: Topic, angle: str) -> Script:
+    def _persist_script(
+        self,
+        script_data: GeneratedScriptSchema,
+        topic: Topic,
+        angle: str,
+        facts: list[StructuredFact] | None = None,
+    ) -> Script:
         session = self.db_mgr.session()
         try:
             scenes_dict = [sc.model_dump() for sc in script_data.scenes]
             sentences_dict = [s.model_dump() for s in script_data.sentences]
-            facts_dict = [f.model_dump() for f in script_data.facts_table or script_data.facts_used]
+            facts_to_save = script_data.facts_table or script_data.facts_used or (facts or [])
+            facts_dict = [f.model_dump() for f in facts_to_save]
+            used_model = self.last_model_used or self.settings.llm.ollama.model
 
             db_script = Script(
                 topic_id=topic.id,
@@ -827,13 +798,18 @@ Schema format:
                 description=script_data.description,
                 facts_used_json=json.dumps(facts_dict),
                 language=self.language,
-                model_used=self.settings.llm.ollama.model,
+                model_used=used_model,
+                script_quality_score=getattr(script_data, "script_quality_score", 0.0),
+                is_template=getattr(script_data, "is_template", False),
                 created_at=datetime.now(UTC),
             )
             session.add(db_script)
             session.commit()
             session.refresh(db_script)
-            logger.info(f"Saved v4 script #{db_script.id} ('{db_script.title}' | Niche: {db_script.niche}) to database.")
+            logger.info(
+                f"Saved v4 script #{db_script.id} ('{db_script.title}' | Niche: {db_script.niche} | "
+                f"Model: {db_script.model_used} | Score: {db_script.script_quality_score:.1f}) to database."
+            )
             return db_script
         finally:
             session.close()
