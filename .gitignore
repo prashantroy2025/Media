@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+
+# Database and state
+data/*.db
+data/*.sqlite3
+data/tokens/
+data/logs/
+
+# Credentials & secrets
+.env
+credentials/
+*.pem
+*.key
+
+# Media outputs and caches
+output/
+assets/cache/
+assets/music/*.mp3
+assets/music/*.wav
+!assets/music/README.md
+!assets/music/.gitkeep
+assets/fonts/*.ttf
+assets/fonts/*.otf
+!assets/fonts/README.md
+!assets/fonts/.gitkeep
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor directories
+.vscode/
+.idea/
+*.swp

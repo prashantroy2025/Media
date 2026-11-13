@@ -1,0 +1,245 @@
+[
+  {
+    "id": "ai_1",
+    "niche": "ai_tech",
+    "title": "DeepSeek Cut AI Memory Bandwidth by 80 Percent",
+    "source_url": "https://arxiv.org/abs/2405.04434",
+    "source_text": "Researchers proved that Multi-Head Latent Attention compresses key-value cache by 80 percent, allowing long-context inference on standard GPUs.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "Multi-Head Latent Attention compresses key-value cache by 80 percent.",
+        "subject": "Multi-Head Latent Attention",
+        "action": "compresses",
+        "object": "key-value cache",
+        "outcome_or_result": "reduces memory bandwidth by 80 percent",
+        "number_with_unit": "80 percent",
+        "source_url": "https://arxiv.org/abs/2405.04434",
+        "excerpt": "MLA compresses key-value cache by 80 percent."
+      }
+    ]
+  },
+  {
+    "id": "ai_2",
+    "niche": "ai_tech",
+    "title": "Waymo Drove 50 Million Miles with 85 Percent Fewer Injury Crashes",
+    "source_url": "https://waymo.com/safety",
+    "source_text": "Autonomous vehicle operator Waymo completed 50 million driverless commercial miles, reporting an 85 percent reduction in airbag-deployment injury crashes compared to human drivers.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "Waymo robotaxis completed 50 million driverless miles with 85 percent fewer injury crashes.",
+        "subject": "Waymo robotaxis",
+        "action": "drove",
+        "object": "50 million driverless commercial miles",
+        "outcome_or_result": "achieved 85 percent fewer injury crashes than human drivers",
+        "number_with_unit": "50 million miles",
+        "source_url": "https://waymo.com/safety",
+        "excerpt": "Waymo reported an 85 percent reduction in injury crashes across 50 million commercial miles."
+      }
+    ]
+  },
+  {
+    "id": "ai_3",
+    "niche": "ai_tech",
+    "title": "NVIDIA Blackwell Packs 208 Billion Transistors on a Dual-Die Chip",
+    "source_url": "https://nvidianews.nvidia.com",
+    "source_text": "NVIDIA unveiled the Blackwell B200 GPU containing 208 billion transistors across two dies bound by a 10 terabyte per second interconnect.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "The Blackwell B200 chip combines 208 billion transistors on two dies.",
+        "subject": "Blackwell B200 GPU",
+        "action": "combines",
+        "object": "208 billion transistors",
+        "outcome_or_result": "delivers 10 terabytes per second interconnect speed",
+        "number_with_unit": "208 billion transistors",
+        "source_url": "https://nvidianews.nvidia.com",
+        "excerpt": "Blackwell packs 208 billion transistors across two dies connected at 10 TB/s."
+      }
+    ]
+  },
+  {
+    "id": "ai_4",
+    "niche": "ai_tech",
+    "title": "Claude 3.5 Sonnet Solved 49.2 Percent of SWE-bench Tasks",
+    "source_url": "https://anthropic.com/news",
+    "source_text": "Anthropic announced Claude 3.5 Sonnet, which resolved 49.2 percent of real-world software engineering GitHub issues on SWE-bench Verified.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "Claude 3.5 Sonnet resolved 49.2 percent of software bugs on SWE-bench.",
+        "subject": "Claude 3.5 Sonnet",
+        "action": "resolved",
+        "object": "real GitHub software engineering bugs",
+        "outcome_or_result": "scored 49.2 percent on SWE-bench Verified",
+        "number_with_unit": "49.2 percent",
+        "source_url": "https://anthropic.com/news",
+        "excerpt": "Claude 3.5 Sonnet resolves 49.2 percent of SWE-bench Verified issues."
+      }
+    ]
+  },
+  {
+    "id": "biz_1",
+    "niche": "business",
+    "title": "Harvest Storm Caused Apple Crop to Fall and Rot",
+    "source_url": "https://usda.gov/reports",
+    "source_text": "In October 2024, high winds caused orchard apples to fall to the ground, where the unharvested fruit spoiled and rotted, wiping out 2 million dollars in farm revenue.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "The orchard apples fell to the ground during a windstorm and subsequently rotted.",
+        "subject": "apples",
+        "action": "fell down to the ground",
+        "object": "orchard crop",
+        "outcome_or_result": "spoiled and rotted before harvest",
+        "time_context": "in October 2024",
+        "number_with_unit": "2 million dollars",
+        "source_url": "https://usda.gov/reports",
+        "excerpt": "The apples fell to the ground and rotted, destroying two million dollars of fruit."
+      }
+    ]
+  },
+  {
+    "id": "biz_2",
+    "niche": "business",
+    "title": "Starlink Revenue Reached 6.6 Billion Dollars in 2024",
+    "source_url": "https://sec.gov/edgar",
+    "source_text": "Filings and industry disclosures confirmed SpaceX Starlink generated 6.6 billion dollars in revenue in 2024, achieving operating profitability.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "Starlink generated 6.6 billion dollars in revenue in fiscal year 2024.",
+        "subject": "Starlink satellite network",
+        "action": "generated",
+        "object": "annual revenue",
+        "outcome_or_result": "achieved operating profitability",
+        "time_context": "in 2024",
+        "number_with_unit": "6.6 billion dollars",
+        "source_url": "https://sec.gov/edgar",
+        "excerpt": "Starlink generated 6.6 billion dollars in revenue in 2024."
+      }
+    ]
+  },
+  {
+    "id": "biz_3",
+    "niche": "business",
+    "title": "NVIDIA Data Center Quarterly Revenue Hit 30 Billion Dollars",
+    "source_url": "https://investor.nvidia.com",
+    "source_text": "In Q3 fiscal 2025, Nvidia reported data center revenue reached 30.8 billion dollars, representing a 112 percent increase year over year.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "Nvidia data center segment generated 30.8 billion dollars in a single quarter.",
+        "subject": "Nvidia data center division",
+        "action": "generated",
+        "object": "quarterly revenue",
+        "outcome_or_result": "grew 112 percent year over year",
+        "time_context": "in Q3 fiscal 2025",
+        "number_with_unit": "30.8 billion dollars",
+        "source_url": "https://investor.nvidia.com",
+        "excerpt": "Data center revenue hit 30.8 billion dollars in Q3 fiscal 2025."
+      }
+    ]
+  },
+  {
+    "id": "biz_4",
+    "niche": "business",
+    "title": "TSMC Invested 65 Billion Dollars to Build Arizona Chip Fabs",
+    "source_url": "https://tsmc.com/press",
+    "source_text": "Semiconductor manufacturing giant TSMC committed 65 billion dollars in total capital expenditures to build three fabrication plants in Phoenix Arizona.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "TSMC committed 65 billion dollars to construct three chip fabrication plants.",
+        "subject": "TSMC",
+        "action": "committed",
+        "object": "65 billion dollars in capital investment",
+        "outcome_or_result": "building three advanced chip fabrication facilities",
+        "time_context": "as of 2024",
+        "number_with_unit": "65 billion dollars",
+        "source_url": "https://tsmc.com/press",
+        "excerpt": "TSMC committed 65 billion dollars to construct three Arizona chip fabs."
+      }
+    ]
+  },
+  {
+    "id": "space_1",
+    "niche": "space_science",
+    "title": "A Teaspoon of a Neutron Star Weighs 6 Billion Tons",
+    "source_url": "https://nasa.gov/universe",
+    "source_text": "Because neutron stars collapse atomic structure under intense gravity, a single teaspoon of neutron star matter weighs approximately 6 billion tons on Earth.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "One teaspoon of neutron star matter weighs 6 billion tons.",
+        "subject": "teaspoon of neutron star matter",
+        "action": "weighs",
+        "object": "6 billion tons",
+        "outcome_or_result": "equals the weight of 900 Great Pyramids",
+        "number_with_unit": "6 billion tons",
+        "source_url": "https://nasa.gov/universe",
+        "excerpt": "A single teaspoon of neutron star matter weighs 6 billion tons on Earth."
+      }
+    ]
+  },
+  {
+    "id": "space_2",
+    "niche": "space_science",
+    "title": "JWST Detected Carbon Dioxide on Exoplanet WASP-39 b",
+    "source_url": "https://webbtelescope.org/news",
+    "source_text": "NASA James Webb Space Telescope detected atmospheric carbon dioxide on gas giant WASP-39 b, located 700 light-years away from Earth.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "The James Webb Space Telescope detected carbon dioxide on exoplanet WASP-39 b.",
+        "subject": "James Webb Space Telescope",
+        "action": "detected",
+        "object": "carbon dioxide gas in the atmosphere",
+        "outcome_or_result": "confirmed molecular composition 700 light-years away",
+        "number_with_unit": "700 light-years",
+        "source_url": "https://webbtelescope.org/news",
+        "excerpt": "JWST detected atmospheric carbon dioxide on WASP-39 b."
+      }
+    ]
+  },
+  {
+    "id": "space_3",
+    "niche": "space_science",
+    "title": "Baby Corals Swim Toward Sound of Healthy Reefs",
+    "source_url": "https://sciencedaily.com/releases",
+    "source_text": "Marine biologists discovered that newly hatched baby coral larvae actively swim toward the crackling acoustic soundscapes of healthy marine reefs before settling.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "Baby coral larvae actively swim toward the sound of healthy reefs.",
+        "subject": "baby coral larvae",
+        "action": "swim toward",
+        "object": "soundscapes of healthy marine reefs",
+        "outcome_or_result": "locate permanent settlement habitats using hearing",
+        "source_url": "https://sciencedaily.com/releases",
+        "excerpt": "Baby coral larvae actively swim toward acoustic sounds of healthy reefs."
+      }
+    ]
+  },
+  {
+    "id": "space_4",
+    "niche": "space_science",
+    "title": "Voyager 1 Transmits from 15 Billion Miles Away",
+    "source_url": "https://nasa.gov/missions/voyager",
+    "source_text": "NASA Voyager 1 space probe travels through interstellar space 15 billion miles from Earth, requiring radio transmissions to travel 22.5 hours each direction.",
+    "structured_facts": [
+      {
+        "id": "F1",
+        "claim": "Voyager 1 communicates with Earth from 15 billion miles away.",
+        "subject": "Voyager 1 space probe",
+        "action": "transmits signals",
+        "object": "across interstellar space",
+        "outcome_or_result": "radio signals take 22.5 hours to arrive",
+        "number_with_unit": "15 billion miles",
+        "source_url": "https://nasa.gov/missions/voyager",
+        "excerpt": "Voyager 1 is 15 billion miles away and signals take 22.5 hours."
+      }
+    ]
+  }
+]

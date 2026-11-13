@@ -1,0 +1,321 @@
+# Nova Autopilot Configuration v3.0
+# Designed for local-first execution on Apple Silicon M2 (8GB RAM)
+
+app:
+  name: "Nova Autopilot"
+  version: "3.0.0"
+  db_path: "data/nova.db"
+  output_dir: "output"
+  cache_dir: "assets/cache"
+  logs_dir: "data/logs"
+
+audience:
+  primary_regions: [US, GB, CA, AU]
+  spelling: en-US          # US spelling and phrasing everywhere
+  units: imperial_with_metric   # e.g. "60 miles (97 km)"
+  currency: USD
+
+niches:
+  ai_tech:
+    weight: 0.50
+    enabled: true
+    name: "AI & Technology"
+    keywords:
+      - "AI"
+      - "Artificial Intelligence"
+      - "Machine Learning"
+      - "LLM"
+      - "DeepSeek"
+      - "OpenAI"
+      - "Anthropic"
+      - "GPU"
+      - "NVIDIA"
+      - "Neural Network"
+      - "Robotics"
+      - "Algorithm"
+    banned_topics:
+      - "crypto hype"
+      - "get rich with AI"
+      - "unsubstantiated AGI doomerism"
+    persona_tweaks: "Explain what happened, why it matters, and provide one concrete comparison. No hype words like 'revolutionary' or 'game-changing'."
+    visual_query_hints:
+      - "server room"
+      - "neural network code"
+      - "robotics laboratory"
+      - "semiconductor chip wafer"
+    hashtag_pool:
+      - "#Shorts"
+      - "#ArtificialIntelligence"
+      - "#TechNews"
+      - "#MachineLearning"
+      - "#Coding"
+    music_mood: "upbeat"
+  business:
+    weight: 0.25
+    enabled: true
+    name: "Business & Economics"
+    keywords:
+      - "economy"
+      - "billion"
+      - "revenue"
+      - "valuation"
+      - "market"
+      - "startup"
+      - "CEO"
+      - "antitrust"
+      - "monopoly"
+      - "supply chain"
+      - "inflation"
+      - "cost"
+    banned_topics:
+      - "stock trading tips"
+      - "crypto shilling"
+      - "get rich quick"
+    banned_phrases:
+      - "buy now"
+      - "guaranteed"
+      - "will crash"
+      - "get rich"
+      - "financial advice"
+      - "price prediction"
+      - "you should buy"
+      - "you should sell"
+      - "invest now"
+      - "massive returns"
+      - "to the moon"
+      - "easy money"
+    persona_tweaks: "Tell business stories and explain mechanisms (how a company makes money, why this costs so much). Never give financial advice. All numbers must carry time context."
+    visual_query_hints:
+      - "stock market floor"
+      - "cargo shipping container port"
+      - "corporate skyscraper"
+      - "manufacturing line"
+    hashtag_pool:
+      - "#Shorts"
+      - "#BusinessStories"
+      - "#Economics"
+      - "#Startups"
+      - "#MoneyExplained"
+    music_mood: "mystery"
+  space_science:
+    weight: 0.25
+    enabled: true
+    name: "Space & Science"
+    keywords:
+      - "NASA"
+      - "astronomy"
+      - "physics"
+      - "universe"
+      - "galaxy"
+      - "telescope"
+      - "quantum"
+      - "black hole"
+      - "light speed"
+      - "neutron star"
+      - "planet"
+      - "exoplanet"
+    banned_topics:
+      - "astrology"
+      - "flat earth"
+      - "ancient aliens"
+    persona_tweaks: "Emphasize scale and wow comparisons. Double-check units with code conversions."
+    visual_query_hints:
+      - "deep space telescope"
+      - "nebula galaxy"
+      - "astronomy observatory"
+      - "quantum physics lab"
+    hashtag_pool:
+      - "#Shorts"
+      - "#Space"
+      - "#Science"
+      - "#Astronomy"
+      - "#MindBlowing"
+    music_mood: "epic"
+
+schedule:
+  audience_timezones:
+    - "America/New_York"
+  windows:
+    - start: "12:00"
+      end: "13:00"
+    - start: "18:00"
+      end: "21:00"
+  enabled_platforms:
+    youtube: true
+    instagram: true
+
+research:
+  max_daily_quota_units: 500
+  outlier_threshold: 3.0
+  reference_channels:
+    - name: "Two Minute Papers"
+      handle: "@TwoMinutePapers"
+      niche: "ai_tech"
+      note: "Fast-paced AI research papers, clear hook on breakthrough"
+    - name: "Fireship"
+      handle: "@Fireship"
+      niche: "ai_tech"
+      note: "High-density tech explanations, punchy short sentences"
+    - name: "Company Man"
+      handle: "@CompanyMan"
+      niche: "business"
+      note: "Corporate strategy breakdowns, operational turnarounds"
+    - name: "Economics Explained"
+      handle: "@EconomicsExplained"
+      niche: "business"
+      note: "Macroeconomic shifts and global currency dynamics"
+    - name: "Veritasium"
+      handle: "@Veritasium"
+      niche: "space_science"
+      note: "Counter-intuitive physics phenomena, myth debunking"
+    - name: "Astrum"
+      handle: "@AstrumSpace"
+      niche: "space_science"
+      note: "Astrophysics, planetary discoveries, scale comparisons"
+
+content:
+  language: "en" # "en" (default) or "hinglish"
+  strategy: "shock_facts_and_science"
+  target_wpm: 175 # Target pace: 165 to 185 words per minute
+  min_wpm: 150
+  max_wpm: 200
+  format_mix:
+    - "mind-blowing fact"
+    - "breaking science/tech news"
+    - "myth vs reality"
+    - "scale comparison"
+    - "before/after"
+  banned_topics:
+    - "medical advice"
+    - "financial advice"
+    - "guaranteed profit"
+    - "conspiracy theories"
+    - "unverified rumors"
+    - "politics"
+    - "hate speech"
+
+channel:
+  name: "PRASHANT ROY"
+  handle: "@NovaPrashantroy"
+  niche_keywords:
+    - "Science"
+    - "Space"
+    - "Physics"
+    - "Shocking Facts"
+    - "Technology"
+    - "AI"
+    - "Artificial Intelligence"
+    - "DeepSeek"
+    - "Quantum"
+    - "Astronomy"
+    - "Robotics"
+    - "Mind Blowing"
+  region: "US"
+  language: "English"
+
+collectors:
+  wikipedia:
+    enabled: true
+    weight: 1.2
+  nasa:
+    enabled: true
+    weight: 1.3
+  science_news:
+    enabled: true
+    weight: 1.1
+  reddit_ideas:
+    enabled: true
+    weight: 1.0
+  google_trends:
+    enabled: true
+    weight: 0.9
+  hackernews:
+    enabled: true
+    weight: 0.8
+
+publishing:
+  publish_mode: "review" # 'review' (default) or 'auto'
+  daily_cap: 2
+  min_gap_hours: 4
+  platforms:
+    youtube: true
+    instagram: true
+
+youtube:
+  default_privacy: "private"
+  category_id: "28" # Science & Technology
+  self_declared_made_for_kids: false
+  synthetic_media_disclosure: true
+
+instagram:
+  account_type: "CREATOR"
+  disclosure_line: "⚡ Shocking facts & science breakdown by @NovaPrashantroy"
+  video_hosting: "quick_tunnel"
+
+llm:
+  provider: "ollama" # 'ollama', 'groq', 'gemini', or 'huggingface'
+  ollama:
+    host: "http://127.0.0.1:11434"
+    model: "llama3.2:3b" # Default English fact model (tested superior)
+    alternative_model: "qwen2.5:3b"
+    timeout_seconds: 90
+    keep_alive: 0 # free RAM immediately after inference
+  groq:
+    model: "llama-3.3-70b-versatile"
+    timeout_seconds: 30
+  gemini:
+    model: "gemini-2.5-flash"
+    timeout_seconds: 30
+  huggingface:
+    model: "Qwen/Qwen2.5-3B-Instruct"
+    timeout_seconds: 45
+
+tts:
+  provider: "edge-tts"
+  voice: "en-US-ChristopherNeural" # Documentary authoritative tone (175-185 WPM)
+  alternative_voices:
+    - "en-US-GuyNeural" # Fast energetic narrator
+    - "en-GB-RyanNeural" # British scientific narrator
+    - "en-US-AriaNeural" # Female articulate documentary voice
+  rate: "+5%" # Tuned with silence trimming to hit 165-185 WPM
+  pitch: "+0Hz"
+  cap_sentence_pause_seconds: 0.25 # Remove silences > 0.25s
+  offline_fallback: "say"
+
+video:
+  width: 1080
+  height: 1920
+  fps: 30
+  target_duration_seconds: 30
+  min_duration_seconds: 20
+  max_duration_seconds: 40
+  codec: "auto" # 'h264_videotoolbox' with 'libx264' fallback
+  bitrate: "9000k"
+  watermark_text: "@NovaPrashantroy"
+  subtitles:
+    font_name: "Montserrat-ExtraBold"
+    font_file: "assets/fonts/Montserrat-ExtraBold.ttf"
+    words_per_group: 3
+    safe_margin_y: 1150 # Centered lower-middle safe zone (avoids bottom 20% & right edge)
+    primary_color: "&H00FFFFFF" # White
+    highlight_color: "&H0000FFFF" # Vivid Yellow
+    outline_color: "&H00000000" # Black outline
+    outline_width: 5
+
+music:
+  default_volume: 0.12 # 12% background volume
+  ducking_volume: 0.05 # 5% during active speech
+  fade_out_seconds: 2.0
+  sfx_enabled: true # Whoosh/impact sound effects on key reveals
+
+visuals:
+  image_gen_enabled: false
+  providers_order:
+    - "pexels_video"
+    - "pixabay_video"
+    - "nasa_media"
+    - "wikimedia_commons"
+    - "openverse"
+    - "stock_photo_kenburns"
+  ken_burns_zoom_speed: 1.05
+  flat_frame_threshold: 0.05 # Max 5% flat frames allowed in visual quality gate

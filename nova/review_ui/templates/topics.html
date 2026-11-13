@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Tracked Topics - Nova Autopilot{% endblock %}
+{% block content %}
+<h1 style="font-size: 2rem; font-weight: 800; margin-bottom: 1.5rem;">Tracked Trending Topics</h1>
+
+<div class="card">
+    {% if topics %}
+    <table>
+        <thead>
+            <tr>
+                <th>Score</th>
+                <th>Title</th>
+                <th>Source</th>
+                <th>Status</th>
+                <th>Discovered</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in topics %}
+            <tr>
+                <td><strong style="color: var(--primary-color);">{{ "%.1f"|format(t.final_score) }}</strong></td>
+                <td>
+                    <div style="font-weight: 600;">{{ t.title }}</div>
+                    <div style="color: var(--text-muted); font-size: 0.8rem;">{{ t.summary[:90] }}...</div>
+                </td>
+                <td><span style="font-size: 0.8rem; background: var(--surface-hover); padding: 2px 6px; border-radius: 4px;">{{ t.source_name }}</span></td>
+                <td><span class="badge badge-{{ 'success' if t.status == 'used' else 'pending' }}">{{ t.status }}</span></td>
+                <td style="font-size: 0.85rem; color: var(--text-muted);">{{ t.created_at.strftime('%m-%d %H:%M') if t.created_at else '-' }}</td>
+                <td>
+                    <a href="{{ t.source_url }}" target="_blank" style="color: var(--text-muted); font-size: 0.85rem; text-decoration: none;">Source &rarr;</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: var(--text-muted); text-align: center; padding: 2rem 0;">No topics collected yet. Run <code>python -m nova collect</code> to fetch current trends.</p>
+    {% endif %}
+</div>
+{% endblock %}

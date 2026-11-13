@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Publication History - Nova Autopilot{% endblock %}
+{% block content %}
+<h1 style="font-size: 2rem; font-weight: 800; margin-bottom: 1.5rem;">Publication History & Analytics</h1>
+
+<div class="card">
+    {% if publications %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Platform</th>
+                <th>Post ID</th>
+                <th>Published At</th>
+                <th>Views</th>
+                <th>Likes</th>
+                <th>Comments</th>
+                <th>Status</th>
+                <th>Link</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in publications %}
+            <tr>
+                <td>#{{ p.id }}</td>
+                <td>
+                    <span style="font-weight: bold; text-transform: capitalize; color: {% if p.platform == 'youtube' %}#ef4444{% else %}#ec4899{% endif %};">
+                        {{ p.platform }}
+                    </span>
+                </td>
+                <td><code>{{ p.platform_post_id[:25] }}</code></td>
+                <td>{{ p.published_at.strftime('%Y-%m-%d %H:%M') if p.published_at else '-' }}</td>
+                <td><strong>{{ p.views }}</strong></td>
+                <td>{{ p.likes }}</td>
+                <td>{{ p.comments }}</td>
+                <td><span class="badge badge-{{ 'success' if p.status == 'success' else 'rejected' }}">{{ p.status }}</span></td>
+                <td>
+                    {% if p.platform_url %}
+                    <a href="{{ p.platform_url }}" target="_blank" style="color: var(--primary-color); text-decoration: none; font-weight: bold;">View &rarr;</a>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: var(--text-muted); text-align: center; padding: 2rem 0;">No publications recorded yet. Approve a video in the Review Queue to publish.</p>
+    {% endif %}
+</div>
+{% endblock %}

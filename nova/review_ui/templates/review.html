@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}Review Queue - Nova Autopilot v3.0{% endblock %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <h1 style="font-size: 2rem; font-weight: 800;">Video Review Studio v3.0</h1>
+        <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Target Audience: <strong>US Prime Time &bull; High-Value English Market</strong>
+        </div>
+    </div>
+    <div style="display: flex; gap: 0.5rem; align-items: center;">
+        {% if selected_video and selected_video.script and selected_video.script.niche %}
+        <span class="badge" style="background: {% if selected_video.script.niche == 'ai_tech' %}#388bfd{% elif selected_video.script.niche == 'business' %}#d29922{% else %}#a371f7{% endif %}; font-size: 0.95rem; padding: 0.4rem 0.8rem;">
+            Niche: {{ selected_video.script.niche.replace('_', ' ').upper() }}
+        </span>
+        {% endif %}
+        {% if selected_video and selected_video.quality_flag %}
+        <span class="badge" style="background: {% if selected_video.quality_flag == 'passed' %}#238636{% elif selected_video.quality_flag == 'low_visuals' %}#d29922{% else %}#da3633{% endif %}; font-size: 0.95rem; padding: 0.4rem 0.8rem;">
+            Quality: {{ selected_video.quality_flag.upper() }}
+        </span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Niche Filter Bar -->
+<div class="card" style="padding: 0.75rem 1rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+    <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-right: 0.5rem;">Filter Niche:</span>
+        <a href="/review" class="btn btn-sm {% if not current_niche %}btn-primary{% else %}btn-secondary{% endif %}">All</a>
+        <a href="/review?niche=ai_tech" class="btn btn-sm {% if current_niche == 'ai_tech' %}btn-primary{% else %}btn-secondary{% endif %}">🤖 AI & Tech</a>
+        <a href="/review?niche=business" class="btn btn-sm {% if current_niche == 'business' %}btn-primary{% else %}btn-secondary{% endif %}">📈 Business</a>
+        <a href="/review?niche=space_science" class="btn btn-sm {% if current_niche == 'space_science' %}btn-primary{% else %}btn-secondary{% endif %}">🚀 Space & Science</a>
+    </div>
+
+    {% if niche_mix %}
+    <div style="display: flex; gap: 1rem; font-size: 0.8rem; color: var(--text-muted);">
+        <span>14d Mix:</span>
+        <span style="color: #58a6ff;">AI: {{ (niche_mix.get('ai_tech', {}).get('actual_share', 0.5) * 100)|round(0) }}% (Target: 50%)</span>
+        <span style="color: #e3b341;">Biz: {{ (niche_mix.get('business', {}).get('actual_share', 0.25) * 100)|round(0) }}% (Target: 25%)</span>
+        <span style="color: #bc8cff;">Space: {{ (niche_mix.get('space_science', {}).get('actual_share', 0.25) * 100)|round(0) }}% (Target: 25%)</span>
+    </div>
+    {% endif %}
+</div>
+
+{% if not selected_video %}
+<div class="card" style="text-align: center; padding: 3rem;">
+    <h2 style="color: var(--text-muted); margin-bottom: 1rem;">Queue is Empty! 🎉</h2>
+    <p style="color: var(--text-muted); margin-bottom: 1.5rem;">All rendered videos for this filter have been reviewed or published.</p>
+    <a href="/dashboard" class="btn btn-primary">Return to Dashboard</a>
+</div>
+{% else %}
+<div style="display: grid; grid-template-columns: 360px 1fr; gap: 2rem; align-items: start;">
+    <!-- Left Column: Vertical Video Player & Contact Sheet -->
+    <div>
+        <div class="card" style="padding: 1rem; text-align: center;">
+            <div style="width: 100%; aspect-ratio: 9/16; background: #000; border-radius: 8px; overflow: hidden; position: relative;">
+                <video controls autoplay loop playsinline style="width: 100%; height: 100%; object-fit: contain;">
+                    <source src="/media/{{ selected_video.video_path }}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            <div style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                <span class="badge badge-{{ selected_video.status }}">{{ selected_video.status }}</span>
+                <span style="color: var(--text-muted); font-size: 0.85rem;">{{ selected_video.duration_seconds }}s &bull; 1080x1920 @ 30fps</span>
+            </div>
+        </div>
+
+        {% if selected_video.contact_sheet_path %}
+        <div class="card" style="padding: 1rem;">
+            <h4 style="margin-bottom: 0.75rem; font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted);">Visual Contact Sheet (1 fps)</h4>
+            <img src="/media/{{ selected_video.contact_sheet_path }}" style="width: 100%; border-radius: 6px; border: 1px solid var(--border-color);" alt="Visual contact sheet">
+        </div>
+        {% endif %}
+
+        <!-- Pending Items List -->
+        <div class="card" style="padding: 1rem;">
+            <h4 style="margin-bottom: 0.75rem; font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted);">Pending Queue ({{ pending_videos|length }})</h4>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 250px; overflow-y: auto;">
+                {% for item in pending_videos %}
+                <a href="/review?video_id={{ item.id }}{% if current_niche %}&niche={{ current_niche }}{% endif %}" style="padding: 0.5rem; border-radius: 6px; text-decoration: none; font-size: 0.85rem; display: block; {% if item.id == selected_video.id %}background: var(--surface-hover); color: var(--primary-color); font-weight: bold;{% else %}color: var(--text-muted);{% endif %}">
+                    #{{ item.id }} [{{ item.script.niche if item.script else "video" }}]: {{ item.script.title[:30] if item.script else "Video" }}...
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Metadata, Quality Gate & Attributions -->
+    <div>
+        <!-- Prime Time Scheduling Banner -->
+        {% if selected_video.scheduled_time_us_eastern %}
+        <div style="background: rgba(56, 139, 253, 0.12); border: 1px solid #388bfd; border-radius: 8px; padding: 0.9rem 1.25rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-size: 0.75rem; text-transform: uppercase; color: #58a6ff; font-weight: 700; letter-spacing: 0.05em;">Target Publishing Slot (US Prime Time)</div>
+                <div style="font-weight: 600; font-size: 1rem; margin-top: 0.25rem; color: var(--text-color);">
+                    🇺🇸 US Eastern: <span style="color: #58a6ff;">{{ selected_video.scheduled_time_us_eastern }}</span>
+                    &nbsp;&bull;&nbsp;
+                    🇮🇳 IST: <span style="color: #bc8cff;">{{ selected_video.scheduled_time_ist }}</span>
+                </div>
+            </div>
+            <span class="badge" style="background: #1f6feb; font-size: 0.85rem; padding: 0.35rem 0.75rem;">DST Auto-Aligned</span>
+        </div>
+        {% endif %}
+
+        <!-- Quality Gate Audit Card -->
+        {% set qg = selected_video.get_quality_gate() %}
+        {% if qg and qg.checks %}
+        <div class="card" style="border-left: 4px solid {% if qg.passed %}#238636{% else %}#da3633{% endif %};">
+            <h3 style="margin-bottom: 1rem; font-weight: 700; display: flex; justify-content: space-between;">
+                <span>Quality Gate Audit Suite</span>
+                <span style="font-size: 0.9rem; color: {% if qg.passed %}#3fb950{% else %}#f85149{% endif %};">
+                    {{ "ALL CHECKS PASSED" if qg.passed else "VERIFICATION WARNINGS" }}
+                </span>
+            </h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
+                {% for name, chk in qg.checks.items() %}
+                <div style="background: var(--bg-color); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                        <span style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted);">{{ name.replace('_', ' ') }}</span>
+                        <span style="font-weight: bold; font-size: 0.8rem; color: {% if chk.passed %}#3fb950{% else %}#f85149{% endif %};">
+                            {{ "PASS" if chk.passed else "FAIL" }}
+                        </span>
+                    </div>
+                    <div style="font-weight: 600; font-size: 0.9rem;">{{ chk.value }}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Target: {{ chk.target }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% if qg.failure_reasons %}
+            <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(218, 54, 51, 0.15); border-radius: 6px; border: 1px solid #da3633; color: #f85149; font-size: 0.85rem;">
+                <strong>Quality Alerts:</strong>
+                <ul style="margin: 0.25rem 0 0 1.25rem;">
+                    {% for r in qg.failure_reasons %}
+                    <li>{{ r }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Subtitle Forced Alignment Sync Card -->
+        {% set sync_stats = selected_video.get_subtitle_sync_stats() %}
+        {% if sync_stats %}
+        <div class="card" style="border-left: 4px solid {% if sync_stats.get('passed_sync') %}#238636{% else %}#da3633{% endif %};">
+            <h3 style="margin-bottom: 0.75rem; font-weight: 700; display: flex; justify-content: space-between; align-items: center;">
+                <span>faster-whisper Forced Alignment Sync</span>
+                <span class="badge" style="background: {% if sync_stats.get('passed_sync') %}#238636{% else %}#da3633{% endif %}; font-size: 0.75rem;">
+                    {{ "SYNC OK (DRIFT <= 250ms)" if sync_stats.get('passed_sync') else "DRIFT FLAGGED" }}
+                </span>
+            </h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem;">
+                <div style="background: var(--bg-color); padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Median Word Drift</div>
+                    <div style="font-weight: 700; font-size: 1.1rem; color: #38bdf8;">{{ sync_stats.get('median_drift_ms', 0)|round(1) }} ms</div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted);">Target: &le; 100 ms</div>
+                </div>
+                <div style="background: var(--bg-color); padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Max Word Drift</div>
+                    <div style="font-weight: 700; font-size: 1.1rem; color: {% if sync_stats.get('max_drift_ms', 0) <= 250 %}#3fb950{% else %}#f85149{% endif %};">{{ sync_stats.get('max_drift_ms', 0)|round(1) }} ms</div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted);">Threshold: &le; 250 ms</div>
+                </div>
+                <div style="background: var(--bg-color); padding: 0.6rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Aligned Word Count</div>
+                    <div style="font-weight: 700; font-size: 1.1rem;">{{ sync_stats.get('aligned_words', 0) }} words</div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted);">Non-linear audio mapped</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Sentence-by-Sentence Beat Map & Visual Alignment Card -->
+        {% if selected_video.script and (selected_video.script.get_sentences() or selected_video.script.get_scenes()) %}
+        {% set sentences = selected_video.script.get_sentences() or selected_video.script.get_scenes() %}
+        {% set alignment = selected_video.get_visual_alignment() %}
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-weight: 700;">Sentence Beat Map & Semantic Visuals</h3>
+                <span style="font-size: 0.8rem; color: var(--text-muted);">Single Source of Truth &bull; No Duplicated Hooks</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                {% for s in sentences %}
+                {% set s_idx = loop.index0 %}
+                {% set align_item = alignment[s_idx] if alignment|length > s_idx else {} %}
+                <div style="background: var(--bg-color); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-weight: 800; font-size: 0.85rem; color: var(--primary-color);">{{ s.id if s.id else ("S" ~ (s_idx + 1)) }}</span>
+                            <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--primary-color); font-size: 0.7rem;">
+                                {{ s.role if s.role else ("Scene " ~ (s_idx + 1)) }}
+                            </span>
+                            {% if s.fact_ids %}
+                            <span style="font-size: 0.75rem; color: #ffd700; font-weight: 600;">Facts: {{ s.fact_ids|join(', ') }}</span>
+                            {% endif %}
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            {% if align_item.provider %}
+                            <span class="badge" style="background: {% if align_item.provider == 'nasa' %}#a371f7{% elif align_item.provider == 'pexels' %}#238636{% elif align_item.provider == 'pixabay' %}#388bfd{% elif align_item.provider == 'wikimedia' %}#d29922{% else %}#ec4899{% endif %}; font-size: 0.7rem;">
+                                {{ align_item.provider.upper() }}
+                            </span>
+                            <span style="font-size: 0.75rem; color: #3fb950; font-weight: 600;">Score: {{ align_item.relevance_score|round(1) }}/100</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div style="font-size: 0.95rem; font-weight: 500; color: var(--text-color); margin-bottom: 0.5rem;">
+                        "{{ s.text if s.text else s.voiceover }}"
+                    </div>
+                    {% if s.visual_intent %}
+                    <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <span><strong>Intent Subject:</strong> {{ s.visual_intent.main_subject }}</span>
+                        <span><strong>Action:</strong> {{ s.visual_intent.action_or_state }}</span>
+                        {% if s.visual_intent.on_screen_label %}
+                        <span style="color: #ffd700;"><strong>Badge:</strong> {{ s.visual_intent.on_screen_label }}</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    <!-- Quick Inline Fix Sentence Form -->
+                    <details style="margin-top: 0.5rem;">
+                        <summary style="font-size: 0.75rem; color: var(--primary-color); cursor: pointer;">✏️ Edit/Fix This Sentence</summary>
+                        <form method="POST" action="/api/videos/{{ selected_video.id }}/fix-sentence" style="margin-top: 0.5rem; display: flex; gap: 0.5rem;">
+                            <input type="hidden" name="sentence_index" value="{{ s_idx }}">
+                            <input type="text" name="new_text" value="{{ s.text if s.text else s.voiceover }}" style="flex: 1; padding: 0.4rem 0.6rem; background: var(--surface-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); font-size: 0.85rem;">
+                            <button type="submit" class="btn btn-sm btn-secondary">Update Sentence</button>
+                        </form>
+                    </details>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Edit Form -->
+        <form method="POST" action="/api/videos/{{ selected_video.id }}/update" class="card">
+            <h3 style="margin-bottom: 1.5rem; font-weight: 700;">Edit Metadata & Copy</h3>
+
+            <div style="margin-bottom: 1.25rem;">
+                <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem;">Title (< 70 chars)</label>
+                <input type="text" name="title" value="{{ selected_video.script.title if selected_video.script else '' }}" required style="width: 100%; padding: 0.75rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color); font-size: 1rem;">
+            </div>
+
+            <div style="margin-bottom: 1.25rem;">
+                <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem;">Description & Attributions</label>
+                <textarea name="description" rows="5" required style="width: 100%; padding: 0.75rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color); font-size: 0.9rem; font-family: inherit;">{{ selected_video.script.description if selected_video.script else '' }}</textarea>
+            </div>
+
+            <div style="margin-bottom: 1.5rem;">
+                <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem;">Hashtags</label>
+                <input type="text" name="hashtags" value="{{ selected_video.script.hashtags if selected_video.script else '' }}" required style="width: 100%; padding: 0.75rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color); font-size: 0.9rem;">
+            </div>
+
+            <div style="display: flex; gap: 1rem;">
+                <button type="submit" class="btn btn-secondary">💾 Save Changes</button>
+            </div>
+        </form>
+
+        <!-- Attributions & Scene Breakdown -->
+        <div class="card">
+            <h4 style="margin-bottom: 1rem; font-weight: 700;">Grounded Facts & Sources</h4>
+            {% if selected_video.script %}
+            <ul style="padding-left: 1.25rem; font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+                {% for f in selected_video.script.get_facts_used() %}
+                <li style="margin-bottom: 0.4rem;">
+                    <strong>{{ f.fact }}</strong> &mdash; 
+                    <a href="{{ f.source_url }}" target="_blank" style="color: var(--primary-color);">{{ f.source_url }}</a>
+                    {% if f.number_unit %}
+                    <span class="badge" style="background: rgba(255, 215, 0, 0.2); color: #ffd700; margin-left: 0.5rem;">Stat: {{ f.number_unit }}</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+
+            <h4 style="margin-bottom: 1rem; font-weight: 700;">Visual & Audio Licenses</h4>
+            <div style="overflow-x: auto; margin-bottom: 1.5rem;">
+                <table style="width: 100%; font-size: 0.85rem; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border-color); text-align: left; color: var(--text-muted);">
+                            <th style="padding: 0.5rem;">Scene</th>
+                            <th style="padding: 0.5rem;">Provider</th>
+                            <th style="padding: 0.5rem;">Creator</th>
+                            <th style="padding: 0.5rem;">License</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in selected_video.attributions %}
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <td style="padding: 0.5rem;">{{ "Music" if a.scene_index == 99 else "Scene " ~ (a.scene_index + 1) }}</td>
+                            <td style="padding: 0.5rem; text-transform: uppercase;">{{ a.provider }}</td>
+                            <td style="padding: 0.5rem;">{{ a.creator_name }}</td>
+                            <td style="padding: 0.5rem;"><span style="color: #58a6ff;">{{ a.license_name }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            <!-- Actions Bar -->
+            <div style="display: flex; gap: 1rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem; flex-wrap: wrap;">
+                <form method="POST" action="/api/videos/{{ selected_video.id }}/approve" style="display: inline;">
+                    <button type="submit" class="btn btn-success" onclick="return confirm('Approve and publish this video to US schedule?');">
+                        🚀 Approve & Publish (or Schedule)
+                    </button>
+                </form>
+                <form method="POST" action="/api/videos/{{ selected_video.id }}/regenerate-script" style="display: inline;">
+                    <button type="submit" class="btn btn-secondary" onclick="return confirm('Regenerate script using advanced narrative spine?');">
+                        🔄 Regenerate Script Only
+                    </button>
+                </form>
+                <form method="POST" action="/api/videos/{{ selected_video.id }}/reject" style="display: inline;">
+                    <button type="submit" class="btn btn-danger" onclick="return confirm('Reject this video?');">
+                        ❌ Reject Video
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

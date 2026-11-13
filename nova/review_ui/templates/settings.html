@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Settings - Nova Autopilot{% endblock %}
+{% block content %}
+<h1 style="font-size: 2rem; font-weight: 800; margin-bottom: 1.5rem;">Studio Settings & Configuration</h1>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem;">
+    <div class="card">
+        <h3 style="margin-bottom: 1rem; font-weight: 700; color: var(--primary-color);">Channel & Persona</h3>
+        <p><strong>Channel Name:</strong> {{ settings.channel.name }}</p>
+        <p><strong>Handle:</strong> {{ settings.channel.handle }}</p>
+        <p><strong>Language:</strong> {{ settings.channel.language }}</p>
+        <p><strong>Target Region:</strong> {{ settings.channel.region }}</p>
+        <p style="margin-top: 0.5rem;"><strong>Niche Keywords:</strong></p>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;">
+            {% for kw in settings.channel.niche_keywords %}
+            <span style="background: var(--surface-hover); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">{{ kw }}</span>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-bottom: 1rem; font-weight: 700; color: var(--primary-color);">AI Models & Hardware (M2 8GB)</h3>
+        <p><strong>LLM Provider:</strong> {{ settings.llm.provider }}</p>
+        <p><strong>Active Ollama Model:</strong> <code>{{ settings.llm.ollama.model }}</code></p>
+        <p><strong>Host:</strong> {{ settings.llm.ollama.host }}</p>
+        <p><strong>Keep Alive:</strong> {{ settings.llm.ollama.keep_alive }} (Immediate unload to prevent RAM exhaustion)</p>
+        <p><strong>TTS Engine:</strong> {{ settings.tts.provider }} (Voice: {{ settings.tts.voice }})</p>
+        <p><strong>Offline TTS Fallback:</strong> {{ settings.tts.offline_fallback }}</p>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-bottom: 1rem; font-weight: 700; color: var(--primary-color);">Publishing Limits</h3>
+        <p><strong>Publishing Mode:</strong> <span class="badge badge-pending">{{ settings.publishing.publish_mode }}</span></p>
+        <p><strong>Daily Publishing Cap:</strong> {{ settings.publishing.daily_cap }} videos / day</p>
+        <p><strong>Minimum Gap:</strong> {{ settings.publishing.min_gap_hours }} hours between posts</p>
+        <p><strong>YouTube Default Privacy:</strong> <code>{{ settings.youtube.default_privacy }}</code></p>
+        <p><strong>Synthetic Media Disclosure:</strong> {{ 'Enabled' if settings.youtube.synthetic_media_disclosure else 'Disabled' }}</p>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-bottom: 1rem; font-weight: 700; color: var(--primary-color);">Diagnostics & Health</h3>
+        <p style="color: var(--text-muted); margin-bottom: 1rem;">To verify system dependencies, API credentials, and hardware health, run:</p>
+        <pre style="background: var(--bg-color); padding: 1rem; border-radius: 6px; font-size: 0.85rem; border: 1px solid var(--border-color); overflow-x: auto;">python scripts/doctor.py</pre>
+    </div>
+</div>
+{% endblock %}

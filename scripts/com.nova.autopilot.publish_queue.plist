@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nova.autopilot.publish_queue</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
+        <string>/Users/prashantroy/Desktop/MEDIA/nova-autopilot/.venv/bin/python</string>
+        <string>-m</string>
+        <string>nova</string>
+        <string>process-queue</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/prashantroy/Desktop/MEDIA/nova-autopilot</string>
+
+    <key>StartInterval</key>
+    <integer>600</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/prashantroy/Desktop/MEDIA/nova-autopilot/data/publish_queue_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/prashantroy/Desktop/MEDIA/nova-autopilot/data/publish_queue_stderr.log</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

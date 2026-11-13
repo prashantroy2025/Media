@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Study Notes - Nova Autopilot v4.0{% endblock %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <h1 style="font-size: 2rem; font-weight: 800;">Creator Study Notes & Pattern Extraction</h1>
+        <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Study what works on top channels &bull; Extract structure & patterns &bull; <strong>Strict Zero-Copy Guard</strong>
+        </div>
+    </div>
+</div>
+
+<!-- Copy Guard Warning Banner -->
+<div style="background: rgba(236, 72, 153, 0.12); border: 1px solid var(--accent-color); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem;">
+    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--accent-color); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.5rem;">
+        <span>🛡️ Anti-Copy Guard Active</span>
+    </div>
+    <p style="font-size: 0.9rem; color: var(--text-color); margin-top: 0.35rem;">
+        Never paste closed captions, transcripts, speaker tags (<code>Speaker 1:</code>), or timestamp markers (<code>00:15</code>).
+        All submissions are automatically scanned and rejected if transcript artifacts are detected. Study notes must be written in your <strong>own words</strong>, detailing structural beats, pacing, and what our channel can do differently.
+    </p>
+</div>
+
+{% if error_msg %}
+<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid var(--danger-color); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; color: #f85149;">
+    <strong>Submission Blocked:</strong> {{ error_msg }}
+</div>
+{% endif %}
+
+{% if success_msg %}
+<div style="background: rgba(16, 185, 129, 0.15); border: 1px solid var(--success-color); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; color: #3fb950;">
+    <strong>Success:</strong> {{ success_msg }}
+</div>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 2rem; align-items: start;">
+    <!-- Left Column: Add New Study Note Form -->
+    <div>
+        <div class="card">
+            <h3 style="margin-bottom: 1.25rem; font-weight: 700;">Record Analytical Study Note</h3>
+            <form method="POST" action="/api/study-notes">
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem;">Topic / Video Title Analyzed</label>
+                    <input type="text" name="topic" required placeholder="e.g. NVIDIA Blackwell GPU Architecture Breakdown" style="width: 100%; padding: 0.65rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color);">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                    <div>
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem;">Target Niche</label>
+                        <select name="niche" style="width: 100%; padding: 0.65rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color);">
+                            <option value="ai_tech">AI & Tech (50%)</option>
+                            <option value="business">Business & Economics (25%)</option>
+                            <option value="space_science">Space & Science (25%)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem;">Hook Type Observed</label>
+                        <select name="hook_type" style="width: 100%; padding: 0.65rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color);">
+                            <option value="curiosity_gap">Curiosity Gap</option>
+                            <option value="concrete_contrast">Concrete Contrast</option>
+                            <option value="mind_blown_stat">Mind-Blown Stat</option>
+                            <option value="debunking">Myth Debunking</option>
+                            <option value="counter_intuitive">Counter-Intuitive Truth</option>
+                            <option value="stakes_and_scale">Stakes & Scale</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem;">Video URL (Optional Reference)</label>
+                    <input type="url" name="video_url" placeholder="https://youtube.com/shorts/..." style="width: 100%; padding: 0.65rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color);">
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem;">Why Did It Work? (Retention Drivers)</label>
+                    <textarea name="why_worked" rows="3" required placeholder="e.g. Visual pacing cut every 2s, hook opened with direct tension before revealing name..." style="width: 100%; padding: 0.65rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color); font-family: inherit;"></textarea>
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem;">Structure & Narrative Flow</label>
+                    <textarea name="structure" rows="3" required placeholder="e.g. Hook (S1) -> Context (S2) -> Physical demonstration (S3) -> Industry impact (S4)..." style="width: 100%; padding: 0.65rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color); font-family: inherit;"></textarea>
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem;">Weaknesses Observed</label>
+                    <textarea name="weaknesses" rows="2" placeholder="e.g. Jargon in payoff was dense, lost tempo around second 20..." style="width: 100%; padding: 0.65rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color); font-family: inherit;"></textarea>
+                </div>
+
+                <div style="margin-bottom: 1.25rem;">
+                    <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.4rem;">What Can Nova Do Differently? (Original Angle)</label>
+                    <textarea name="what_to_do_differently" rows="2" required placeholder="e.g. Anchor on the cost comparison ($3M vs $30k) and explain physical cooling mechanism..." style="width: 100%; padding: 0.65rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-color); font-family: inherit;"></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%;">💾 Save Verified Study Note</button>
+            </form>
+        </div>
+
+        <!-- Tracked Reference Channels -->
+        <div class="card">
+            <h4 style="margin-bottom: 1rem; font-weight: 700;">Tracked Reference Channels (Metadata Only)</h4>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                {% for ch in reference_channels %}
+                <div style="padding: 0.75rem; background: var(--bg-color); border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="color: var(--primary-color);">{{ ch.name }}</strong>
+                        <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: var(--primary-color);">{{ ch.niche }}</span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">{{ ch.handle }} &bull; {{ ch.note }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Saved Notes List -->
+    <div>
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+                <h3 style="font-weight: 700;">Pattern Notes Library ({{ notes|length }})</h3>
+                <span style="font-size: 0.85rem; color: var(--text-muted);">Verified Copy-Free</span>
+            </div>
+
+            {% if not notes %}
+            <div style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                <p>No study notes recorded yet.</p>
+                <p style="font-size: 0.85rem; margin-top: 0.5rem;">Use the form to extract structural patterns from standout Shorts.</p>
+            </div>
+            {% else %}
+            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                {% for n in notes %}
+                <div style="padding: 1.25rem; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                        <div>
+                            <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-color);">{{ n.topic }}</h4>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">
+                                {{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}
+                                {% if n.video_url %}
+                                &bull; <a href="{{ n.video_url }}" target="_blank" style="color: var(--primary-color);">Ref Link</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.4rem;">
+                            <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: var(--primary-color);">{{ n.niche }}</span>
+                            <span class="badge" style="background: rgba(236, 72, 153, 0.2); color: var(--accent-color);">{{ n.hook_type }}</span>
+                        </div>
+                    </div>
+
+                    <div style="font-size: 0.85rem; margin-bottom: 0.6rem;">
+                        <strong style="color: #38bdf8;">Why It Worked:</strong> {{ n.why_worked }}
+                    </div>
+
+                    <div style="font-size: 0.85rem; margin-bottom: 0.6rem;">
+                        <strong style="color: #bc8cff;">Structure:</strong> {{ n.structure }}
+                    </div>
+
+                    {% if n.weaknesses %}
+                    <div style="font-size: 0.85rem; margin-bottom: 0.6rem;">
+                        <strong style="color: #f85149;">Weakness:</strong> {{ n.weaknesses }}
+                    </div>
+                    {% endif %}
+
+                    <div style="font-size: 0.85rem; padding: 0.6rem; background: rgba(16, 185, 129, 0.1); border-left: 3px solid var(--success-color); border-radius: 4px;">
+                        <strong style="color: #3fb950;">Our Original Angle:</strong> {{ n.what_to_do_differently }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

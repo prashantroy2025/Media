@@ -1,0 +1,20 @@
+[project]
+name = "nova-autopilot"
+version = "1.0.0"
+description = "Local AI Short-Video Studio and Auto-Publisher"
+authors = [{ name = "Prashant Roy" }]
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E501", # Line too long
+]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
