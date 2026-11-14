@@ -225,3 +225,127 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         concat_file.write_text("\n".join(concat_lines), encoding="utf-8")
         logger.info(f"Generated karaoke overlay bundle with {frame_counter} word highlight frames at {output_dir.name}")
         return concat_file
+
+    def create_caption_stream(
+        self,
+        word_timings: list[WordTiming],
+        total_duration: float,
+        output_mov_path: Path,
+        fps: int = 30,
+        watermark_text: str = "@NovaPrashantroy",
+    ) -> Path:
+        """Renders a single continuous transparent RGBA video stream with karaoke word highlights.
+
+        This replaces hundreds of individual PNGs in concat demuxers with a single .mov alpha track.
+        """
+        import subprocess
+
+        output_mov_path.parent.mkdir(parents=True, exist_ok=True)
+        font = _get_font(self.settings, 58)
+        watermark_font = _get_font(self.settings, 32)
+
+        # Base transparent background with watermark
+        blank_img = Image.new("RGBA", (1080, 1920), (0, 0, 0, 0))
+        draw_b = ImageDraw.Draw(blank_img)
+        if watermark_text:
+            draw_b.text(
+                (740, 80),
+                watermark_text,
+                font=watermark_font,
+                fill=(255, 255, 255, 200),
+                stroke_width=3,
+                stroke_fill=(0, 0, 0, 255),
+            )
+        blank_bytes = blank_img.tobytes()
+
+        # Group words into chunks
+        chunks = []
+        for i in range(0, len(word_timings), self.words_per_group):
+            c = word_timings[i : i + self.words_per_group]
+            if c:
+                chunks.append(c)
+
+        # Pre-render state images for each (chunk_index, active_word_index)
+        rendered_states: dict[tuple[int, int], bytes] = {}
+        for c_idx, chunk in enumerate(chunks):
+            words = [w.word.strip().upper() for w in chunk]
+            full_phrase = " ".join(words)
+            dummy_draw = ImageDraw.Draw(blank_img)
+            bbox = dummy_draw.textbbox((0, 0), full_phrase, font=font, stroke_width=7)
+            total_w = bbox[2] - bbox[0]
+            start_x = max(60, (1080 - total_w) // 2)
+            y_pos = self.safe_margin_y
+
+            for active_idx in range(len(chunk)):
+                sub_img = blank_img.copy()
+                draw = ImageDraw.Draw(sub_img)
+                cur_x = start_x
+                for idx, w in enumerate(words):
+                    is_active = idx == active_idx
+                    fill_color = (255, 215, 0, 255) if is_active else (255, 255, 255, 255)
+                    draw.text(
+                        (cur_x, y_pos),
+                        w,
+                        font=font,
+                        fill=fill_color,
+                        stroke_width=7,
+                        stroke_fill=(0, 0, 0, 255),
+                    )
+                    w_box = draw.textbbox((0, 0), w + " ", font=font, stroke_width=7)
+                    cur_x += w_box[2] - w_box[0]
+                rendered_states[(c_idx, active_idx)] = sub_img.tobytes()
+
+        total_frames = max(1, int(round(total_duration * fps)))
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-vcodec",
+            "rawvideo",
+            "-s",
+            "1080x1920",
+            "-pix_fmt",
+            "rgba",
+            "-r",
+            str(fps),
+            "-i",
+            "-",
+            "-c:v",
+            "png",
+            "-pix_fmt",
+            "rgba",
+            "-t",
+            str(round(total_duration, 3)),
+            str(output_mov_path.resolve()),
+        ]
+
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+
+        for f_idx in range(total_frames):
+            t = f_idx / fps
+            frame_bytes = blank_bytes
+
+            for c_idx, chunk in enumerate(chunks):
+                chunk_start = chunk[0].start
+                chunk_end = max(chunk_start + 0.2, chunk[-1].end)
+                if chunk_start <= t <= chunk_end:
+                    for active_idx, w in enumerate(chunk):
+                        w_end = max(w.start + 0.1, w.end)
+                        if w.start <= t <= w_end or (active_idx == len(chunk) - 1 and t > w.start):
+                            frame_bytes = rendered_states.get((c_idx, active_idx), blank_bytes)
+                            break
+                    break
+
+            proc.stdin.write(frame_bytes)
+
+        proc.stdin.close()
+        stderr_bytes = proc.stderr.read() if proc.stderr else b""
+        proc.wait()
+        if proc.returncode != 0:
+            logger.error(f"Failed to generate transparent caption stream: {stderr_bytes.decode()}")
+            raise RuntimeError(f"FFmpeg caption stream failed: {stderr_bytes.decode()[:300]}")
+
+        logger.info(f"Generated single transparent caption stream ({total_frames} frames) at {output_mov_path.name}")
+        return output_mov_path

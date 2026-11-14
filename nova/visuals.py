@@ -19,17 +19,45 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from nova.config import NovaSettings
+from nova.animation.templates import render_data_card_for_beat
+from nova.beats import Beat, BeatPlanner, BeatType
+from nova.gemini import GeminiClient, VisualRoute
 from nova.logging_setup import logger
 from nova.relevance import CandidateVisual, VisualRelevanceScorer
+from nova.relevance_gate import RelevanceGate
+from nova.timeline import ShotPlan
 
 SPACE_KEYWORDS = {
-    "space", "planet", "galaxy", "universe", "telescope", "star", "nebula", "black hole",
-    "neutron star", "rocket", "astronaut", "mars", "jupiter", "saturn", "moon", "solar",
-    "orbit", "exoplanet", "astronomy", "cosmic", "hubble", "webb", "nasa", "pulsar",
-    "astrophysics", "interstellar", "voyager"
+    "space",
+    "planet",
+    "galaxy",
+    "universe",
+    "telescope",
+    "star",
+    "nebula",
+    "black hole",
+    "neutron star",
+    "rocket",
+    "astronaut",
+    "mars",
+    "jupiter",
+    "saturn",
+    "moon",
+    "solar",
+    "orbit",
+    "exoplanet",
+    "astronomy",
+    "cosmic",
+    "hubble",
+    "webb",
+    "nasa",
+    "pulsar",
+    "astrophysics",
+    "interstellar",
+    "voyager",
 }
 
 # Banned query placeholder strings that must never be queried
@@ -47,6 +75,11 @@ BANNED_VISUAL_PLACEHOLDERS = {
     "specific query 1",
     "specific query 2",
     "broad query 3",
+    "specific footage search term",
+    "search term",
+    "footage",
+    "specific query",
+    "visual query",
 }
 
 # Abstract words that cannot serve as footage visual queries
@@ -79,11 +112,48 @@ ABSTRACT_VISUAL_WORDS = {
 }
 
 VISUAL_STOPWORDS = {
-    "a", "an", "the", "in", "on", "at", "by", "for", "with", "about",
-    "against", "between", "into", "through", "during", "before", "after",
-    "above", "below", "to", "from", "up", "down", "is", "are", "was",
-    "were", "be", "been", "being", "have", "has", "had", "it", "its",
-    "they", "them", "their", "this", "that", "these", "those"
+    "a",
+    "an",
+    "the",
+    "in",
+    "on",
+    "at",
+    "by",
+    "for",
+    "with",
+    "about",
+    "against",
+    "between",
+    "into",
+    "through",
+    "during",
+    "before",
+    "after",
+    "above",
+    "below",
+    "to",
+    "from",
+    "up",
+    "down",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "it",
+    "its",
+    "they",
+    "them",
+    "their",
+    "this",
+    "that",
+    "these",
+    "those",
 }
 
 
@@ -141,6 +211,198 @@ def generate_concrete_queries(sentence_text: str, main_subject: str = "", niche:
     return ["modern technology laboratory", "scientific experiment research", "data network close up"]
 
 
+def get_media_duration(file_path: Path) -> float:
+    """Uses ffprobe to extract exact duration of media file in seconds."""
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(file_path),
+    ]
+    try:
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        return float(res.stdout.strip())
+    except Exception:
+        return 3.0
+
+
+def fit_video_shot(input_video: Path, output_video: Path, target_duration: float, fps: int = 30) -> None:
+    """Normalizes stock video to 1080x1920, 30fps CFR, exact target duration."""
+    output_video.parent.mkdir(parents=True, exist_ok=True)
+    src_duration = get_media_duration(input_video)
+    t_dur = round(target_duration, 3)
+
+    if src_duration >= t_dur:
+        offset = max(0.0, (src_duration - t_dur) / 3.0)
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{offset:.2f}",
+            "-i",
+            str(input_video.resolve()),
+            "-vf",
+            "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,format=yuv420p",
+            "-t",
+            str(t_dur),
+            "-r",
+            str(fps),
+            "-fps_mode",
+            "cfr",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-an",
+            str(output_video.resolve()),
+        ]
+    elif src_duration >= 0.75 * t_dur and src_duration > 0.5:
+        speed_factor = t_dur / src_duration
+        filter_chain = f"setpts={speed_factor:.4f}*PTS,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,format=yuv420p"
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_video.resolve()),
+            "-vf",
+            filter_chain,
+            "-t",
+            str(t_dur),
+            "-r",
+            str(fps),
+            "-fps_mode",
+            "cfr",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-an",
+            str(output_video.resolve()),
+        ]
+    else:
+        filter_chain = (
+            f"[0:v]reverse[r];[0:v][r]concat=n=2:v=1[pp];[pp]loop=loop=-1:size=300,setpts=N/({fps}*TB),"
+            f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,format=yuv420p[outv]"
+        )
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_video.resolve()),
+            "-filter_complex",
+            filter_chain,
+            "-map",
+            "[outv]",
+            "-t",
+            str(t_dur),
+            "-r",
+            str(fps),
+            "-fps_mode",
+            "cfr",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-an",
+            str(output_video.resolve()),
+        ]
+
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+    if res.returncode != 0:
+        logger.error(f"fit_video_shot failed: {res.stderr}")
+        raise RuntimeError(f"FFmpeg video fitting failed: {res.stderr}")
+
+
+def fit_image_shot(
+    image_path: Path,
+    output_video: Path,
+    target_duration: float,
+    fps: int = 30,
+    direction: str = "zoom_in",
+) -> None:
+    """Applies cinematic Ken Burns zoom/pan with varying direction to a still image, normalized to 1080x1920 30fps CFR."""
+    output_video.parent.mkdir(parents=True, exist_ok=True)
+    t_dur = round(target_duration, 3)
+    total_frames = max(1, int(round(t_dur * fps)))
+
+    # Ensure source image is clean decodeable RGB JPEG before feeding to ffmpeg
+    clean_image_path = None
+    try:
+        with Image.open(image_path) as img:
+            rgb_img = img.convert("RGB")
+            clean_image_path = output_video.with_suffix(".sanitized.jpg")
+            rgb_img.save(clean_image_path, "JPEG", quality=95)
+        source_input = clean_image_path
+    except Exception as e:
+        logger.warning(f"PIL pre-sanitization failed for {image_path}: {e}")
+        source_input = image_path
+
+    try:
+        if direction == "zoom_out":
+            zoom_expr = f"zoompan=z=\x27if(lte(zoom,1.0),1.15,max(1.001,zoom-0.0008))\x27:d={total_frames}:x=\x27iw/2-(iw/zoom/2)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
+        elif direction == "pan_right":
+            zoom_expr = f"zoompan=z=1.12:d={total_frames}:x=\x27(on/{total_frames})*(iw-iw/zoom)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
+        elif direction == "pan_left":
+            zoom_expr = f"zoompan=z=1.12:d={total_frames}:x=\x27(1-(on/{total_frames}))*(iw-iw/zoom)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
+        else:  # zoom_in default
+            zoom_expr = f"zoompan=z=\x27min(zoom+0.0008,1.15)\x27:d={total_frames}:x=\x27iw/2-(iw/zoom/2)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
+
+        filter_chain = f"scale=1080x1920:force_original_aspect_ratio=increase,crop=1080:1920,{zoom_expr},setsar=1,format=yuv420p"
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-i",
+            str(source_input.resolve()),
+            "-vf",
+            filter_chain,
+            "-t",
+            str(t_dur),
+            "-r",
+            str(fps),
+            "-fps_mode",
+            "cfr",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-an",
+            str(output_video.resolve()),
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+        if res.returncode != 0:
+            logger.error(f"fit_image_shot failed: {res.stderr}")
+            raise RuntimeError(f"FFmpeg image Ken Burns failed: {res.stderr}")
+    finally:
+        if clean_image_path and clean_image_path.exists():
+            try:
+                clean_image_path.unlink()
+            except Exception:
+                pass
+
+
 @dataclass
 class VisualAsset:
     file_path: Path
@@ -154,6 +416,7 @@ class VisualAsset:
     preview_path: str = ""
     is_fallback_card: bool = False
     diagnostic_info: dict[str, Any] = field(default_factory=dict)
+    license_proof: Any = None
 
 
 class VisualsManager:
@@ -165,6 +428,14 @@ class VisualsManager:
         self.pixabay_key = os.getenv("PIXABAY_API_KEY", "")
         self.used_asset_ids: set[str] = set()
         self.scorer = VisualRelevanceScorer(min_threshold=40.0)
+
+        # Multi-provider infrastructure & local library
+        from nova.providers.registry import ProviderRegistry
+        from nova.library.searcher import MediaLibrarySearcher
+        self.registry = ProviderRegistry()
+        self.library_searcher = MediaLibrarySearcher()
+        self.gemini_client = GeminiClient(settings)
+        self.ai_hero_video_generated = False
 
     def get_sentence_visual(
         self,
@@ -442,6 +713,13 @@ class VisualsManager:
                     img_url = ii.get("url")
                     if not img_url:
                         continue
+                    # Exclude non-standard raster formats (e.g. PDF, TIF, DJVU, SVG, WebM)
+                    url_lower = img_url.lower()
+                    if any(
+                        bad_ext in url_lower
+                        for bad_ext in [".pdf", ".djvu", ".tif", ".tiff", ".svg", ".webm", ".ogg", ".ogv"]
+                    ):
+                        continue
                     # Exclude tiny thumbnails
                     width = ii.get("width", 0)
                     height = ii.get("height", 0)
@@ -551,11 +829,15 @@ class VisualsManager:
         from rich.table import Table
 
         console = Console()
-        console.print(f"\n[bold cyan]🔍 Diagnosing Visual Footage Pipeline for: '[bold white]{query}[/bold white]' (Niche: {niche})[/bold cyan]\n")
+        console.print(
+            f"\n[bold cyan]🔍 Diagnosing Visual Footage Pipeline for: '[bold white]{query}[/bold white]' (Niche: {niche})[/bold cyan]\n"
+        )
 
         valid_q = is_valid_visual_query(query)
         if not valid_q:
-            console.print(f"[bold red]❌ Query Validation Failed:[/bold red] '{query}' is rejected as a placeholder, stopword, or abstract term.")
+            console.print(
+                f"[bold red]❌ Query Validation Failed:[/bold red] '{query}' is rejected as a placeholder, stopword, or abstract term."
+            )
             concrete = generate_concrete_queries(query, query, niche=niche)
             console.print(f"[bold green]✓ Recommended Concrete Replacements:[/bold green] {concrete}\n")
 
@@ -587,7 +869,14 @@ class VisualsManager:
                 cands = fetch_fn()
                 count = len(cands)
                 if count == 0:
-                    table.add_row(display_name, "[bold red]EMPTY[/bold red]", "0", "Zero results returned", "0.0/100", "[red]FAIL[/red]")
+                    table.add_row(
+                        display_name,
+                        "[bold red]EMPTY[/bold red]",
+                        "0",
+                        "Zero results returned",
+                        "0.0/100",
+                        "[red]FAIL[/red]",
+                    )
                     results[prov_id] = {"enabled": True, "count": 0, "status": "zero_results"}
                 else:
                     top_cand = cands[0]
@@ -610,7 +899,9 @@ class VisualsManager:
                         "passed_gate": passes,
                     }
             except Exception as e:
-                table.add_row(display_name, "[bold red]ERROR[/bold red]", "0", str(e)[:34], "0.0/100", "[red]ERROR[/red]")
+                table.add_row(
+                    display_name, "[bold red]ERROR[/bold red]", "0", str(e)[:34], "0.0/100", "[red]ERROR[/red]"
+                )
                 results[prov_id] = {"enabled": True, "count": 0, "error": str(e)}
 
         console.print(table)
@@ -664,55 +955,105 @@ class VisualsManager:
     def _fetch_openverse_media(self, query: str) -> list[CandidateVisual]:
         return self._search_openverse(query)
 
-    def _download_to_cache(self, url: str, ext: str) -> Path:
+    def _download_to_cache(self, url: str, ext: str = ".jpg") -> Path:
+        if os.path.exists(url) or url.startswith("/"):
+            local_p = Path(url)
+            if local_p.exists() and local_p.is_file():
+                return local_p
+        clean_ext = ".mp4" if "mp4" in ext.lower() else ".jpg"
         h = hashlib.sha256(url.encode()).hexdigest()[:16]
-        cache_file = self.cache_dir / f"asset_{h}{ext}"
+        cache_file = self.cache_dir / f"asset_{h}{clean_ext}"
         if cache_file.exists() and cache_file.stat().st_size > 1024:
             return cache_file
-        headers = {"User-Agent": "Mozilla/5.0 (Nova Autopilot)"}
-        with requests.get(url, headers=headers, stream=True, timeout=12) as r:
+        headers = {
+            "User-Agent": "NovaAutopilot/8.0 (https://github.com/nova-autopilot; contact: admin@novastudio.ai)",
+            "Accept": "*/*",
+        }
+        max_bytes = 25 * 1024 * 1024  # 25 MB max to prevent long network pauses
+        with requests.get(url, headers=headers, stream=True, timeout=8) as r:
             r.raise_for_status()
+            c_len = r.headers.get("content-length")
+            if c_len and int(c_len) > max_bytes:
+                raise ValueError(f"Asset exceeds maximum 25MB download limit ({int(c_len)/(1024*1024):.1f}MB)")
+
+            bytes_written = 0
             with open(cache_file, "wb") as f:
                 for chunk in r.iter_content(chunk_size=32768):
+                    bytes_written += len(chunk)
+                    if bytes_written > max_bytes:
+                        raise ValueError(f"Asset exceeded 25MB stream cap ({bytes_written/(1024*1024):.1f}MB)")
                     f.write(chunk)
+
+        # Validate that the downloaded image is actually a valid decodeable image (not PDF, HTML, or corrupt bitstream)
+        if clean_ext == ".jpg":
+            try:
+                with Image.open(cache_file) as im:
+                    rgb = im.convert("RGB")
+                    temp_clean = cache_file.with_suffix(".tmp.jpg")
+                    rgb.save(temp_clean, "JPEG", quality=95)
+                temp_clean.replace(cache_file)
+            except Exception as e:
+                if cache_file.exists():
+                    cache_file.unlink()
+                raise ValueError(f"Downloaded asset from {url} is not a valid decodeable image: {e}")
+        elif clean_ext == ".mp4":
+            dur = get_media_duration(cache_file)
+            if dur <= 0.1:
+                if cache_file.exists():
+                    cache_file.unlink()
+                raise ValueError(f"Downloaded video from {url} is corrupt or 0 duration.")
+
         return cache_file
 
     def _transcode_to_916(self, input_video: Path, output_video: Path, duration: float):
-        cmd = [
-            "ffmpeg", "-y", "-i", str(input_video.resolve()),
-            "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1",
-            "-c:v", "h264_videotoolbox", "-b:v", self.settings.video.bitrate,
-            "-pix_fmt", "yuv420p", "-r", "30", "-t", str(round(duration, 2)),
-            "-an", str(output_video.resolve()),
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            cmd[cmd.index("h264_videotoolbox")] = "libx264"
-            subprocess.run(cmd, check=True)
+        fit_video_shot(input_video, output_video, duration, fps=30)
 
     def _apply_ken_burns(self, image_path: Path, output_video: Path, duration: float):
-        fps = self.settings.video.fps
-        total_frames = int(duration * fps)
-        zoom_expr = f"min(zoom+0.0015,{self.settings.visuals.ken_burns_zoom_speed})"
-        filter_chain = (
-            f"scale=1080x1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-            f"zoompan=z='{zoom_expr}':d={total_frames}:s=1080x1920:fps={fps},setsar=1"
-        )
-        cmd = [
-            "ffmpeg", "-y", "-loop", "1", "-i", str(image_path.resolve()),
-            "-vf", filter_chain, "-c:v", "h264_videotoolbox",
-            "-b:v", self.settings.video.bitrate, "-pix_fmt", "yuv420p",
-            "-r", str(fps), "-t", str(round(duration, 2)),
-            "-an", str(output_video.resolve()),
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode != 0:
-            cmd[cmd.index("h264_videotoolbox")] = "libx264"
-            subprocess.run(cmd, check=True)
+        fit_image_shot(image_path, output_video, duration, fps=self.settings.video.fps)
 
     def _extract_preview(self, video_path: Path, out_thumb: Path):
         cmd = ["ffmpeg", "-y", "-ss", "0.5", "-i", str(video_path.resolve()), "-vframes", "1", str(out_thumb.resolve())]
         subprocess.run(cmd, capture_output=True)
+
+    def _apply_illustrative_badge(self, video_path: Path) -> None:
+        """Overlays a clean, subtle 'ILLUSTRATIVE FOOTAGE' badge on the top-left corner."""
+        badge_png = video_path.with_name(f"{video_path.stem}_ill_badge.png")
+        temp_out = video_path.with_name(f"{video_path.stem}_ill_badged.mp4")
+
+        img = Image.new("RGBA", (1080, 1920), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        pill_box = [60, 120, 420, 175]
+        draw.rounded_rectangle(pill_box, radius=12, fill=(10, 15, 25, 190), outline=(200, 220, 240, 120), width=1)
+
+        font = ImageFont.load_default()
+        try:
+            font_file = self.settings.resolve_path(self.settings.video.subtitles.font_file)
+            if font_file.exists():
+                font = ImageFont.truetype(str(font_file), 24)
+        except Exception:
+            pass
+
+        draw.text((80, 136), "ILLUSTRATIVE FOOTAGE", font=font, fill=(220, 230, 245, 220))
+        img.save(badge_png)
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", str(video_path.resolve()),
+            "-i", str(badge_png.resolve()),
+            "-filter_complex", "[0:v][1:v]overlay=0:0[outv]",
+            "-map", "[outv]",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            "-an", str(temp_out.resolve()),
+        ]
+        res = subprocess.run(cmd, capture_output=True)
+        if res.returncode == 0:
+            temp_out.replace(video_path)
+        if badge_png.exists():
+            badge_png.unlink()
 
     def _apply_on_screen_label(self, video_path: Path, label: str):
         if not label or len(label) < 2:
@@ -739,21 +1080,151 @@ class VisualsManager:
         card_x = (1080 - card_w) // 2
         card_y = 480
 
-        draw.rounded_rectangle((card_x, card_y, card_x + card_w, card_y + card_h), radius=16, fill=(20, 20, 30, 210), outline=(255, 215, 0, 220), width=3)
+        draw.rounded_rectangle(
+            (card_x, card_y, card_x + card_w, card_y + card_h),
+            radius=16,
+            fill=(20, 20, 30, 210),
+            outline=(255, 215, 0, 220),
+            width=3,
+        )
         draw.text((card_x + 30, card_y + 12), text, font=font, fill=(255, 255, 255, 255))
         img.save(badge_png)
 
         cmd = [
-            "ffmpeg", "-y", "-i", str(video_path.resolve()), "-i", str(badge_png.resolve()),
-            "-filter_complex", "[0:v][1:v]overlay=0:0[outv]", "-map", "[outv]",
-            "-c:v", "h264_videotoolbox", "-b:v", self.settings.video.bitrate,
-            "-pix_fmt", "yuv420p", "-an", str(temp_out.resolve()),
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path.resolve()),
+            "-i",
+            str(badge_png.resolve()),
+            "-filter_complex",
+            "[0:v][1:v]overlay=0:0[outv]",
+            "-map",
+            "[outv]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-an",
+            str(temp_out.resolve()),
         ]
         res = subprocess.run(cmd, capture_output=True)
         if res.returncode == 0:
             temp_out.replace(video_path)
         if badge_png.exists():
             badge_png.unlink()
+
+    def _generate_fallback_card(
+        self,
+        index: int,
+        subject: str,
+        action: str,
+        duration: float,
+        dest_video_path: Path,
+        label: str | None = None,
+        shot_index: int = 0,
+    ) -> VisualAsset:
+        """Generates premium typography title card with blurred image background and subtle Ken Burns drift."""
+        dest_video_path.parent.mkdir(parents=True, exist_ok=True)
+
+        bg_image = None
+        cached_images = list(self.cache_dir.glob("*.jpg")) + list(self.cache_dir.glob("*.jpeg"))
+        if cached_images:
+            pick_file = cached_images[(index + shot_index) % len(cached_images)]
+            try:
+                with Image.open(pick_file) as c_img:
+                    bg_image = (
+                        c_img.convert("RGB")
+                        .resize((1080, 1920), Image.Resampling.LANCZOS)
+                        .filter(ImageFilter.GaussianBlur(radius=28))
+                    )
+            except Exception:
+                bg_image = None
+
+        if bg_image is None:
+            bg_image = Image.new("RGB", (1080, 1920), (12, 16, 26))
+            d_bg = ImageDraw.Draw(bg_image)
+            for y in range(1920):
+                factor = y / 1920.0
+                r = int(10 + factor * 8)
+                g = int(14 + factor * 12)
+                b = int(22 + factor * 20)
+                d_bg.line([(0, y), (1080, y)], fill=(r, g, b))
+
+        vignette = Image.new("RGBA", (1080, 1920), (0, 0, 0, 0))
+        v_draw = ImageDraw.Draw(vignette)
+        v_draw.rectangle([0, 0, 1080, 1920], fill=(5, 8, 15, 140))
+        v_draw.rounded_rectangle([60, 680, 1020, 1240], radius=24, fill=(10, 15, 25, 200))
+        v_draw.line([(100, 680), (980, 680)], fill=(0, 210, 255, 230), width=4)
+        v_draw.line([(100, 1240), (980, 1240)], fill=(0, 210, 255, 180), width=2)
+
+        bg_rgba = bg_image.convert("RGBA")
+        composite = Image.alpha_composite(bg_rgba, vignette).convert("RGB")
+        draw = ImageDraw.Draw(composite)
+
+        font_display = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
+        try:
+            font_file = self.settings.resolve_path(self.settings.video.subtitles.font_file)
+            if font_file.exists():
+                font_display = ImageFont.truetype(str(font_file), 64)
+                font_sub = ImageFont.truetype(str(font_file), 36)
+        except Exception:
+            pass
+
+        display_text = (label or subject).upper()
+        if len(display_text) > 22:
+            words = display_text.split()
+            mid = len(words) // 2
+            display_lines = [" ".join(words[:mid]), " ".join(words[mid:])]
+        else:
+            display_lines = [display_text]
+
+        cur_y = 820 - (len(display_lines) - 1) * 40
+        for line in display_lines:
+            bbox = draw.textbbox((0, 0), line, font=font_display)
+            tw = bbox[2] - bbox[0]
+            tx = (1080 - tw) // 2
+            draw.text(
+                (tx + 3, cur_y + 3), line, font=font_display, fill=(0, 0, 0), stroke_width=4, stroke_fill=(0, 0, 0)
+            )
+            draw.text((tx, cur_y), line, font=font_display, fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
+            cur_y += 75
+
+        sub_text = action.capitalize() if action and action != "active motion" else "KEY INSIGHT"
+        bbox_s = draw.textbbox((0, 0), sub_text, font=font_sub)
+        tws = bbox_s[2] - bbox_s[0]
+        txs = (1080 - tws) // 2
+        draw.text((txs, 1120), sub_text, font=font_sub, fill=(0, 210, 255), stroke_width=2, stroke_fill=(0, 0, 0))
+
+        temp_png = dest_video_path.with_suffix(".card.png")
+        composite.save(temp_png)
+
+        directions = ["zoom_in", "zoom_out", "pan_right", "pan_left"]
+        direction = directions[shot_index % len(directions)]
+        fit_image_shot(temp_png, dest_video_path, duration, direction=direction)
+        if temp_png.exists():
+            temp_png.unlink()
+
+        preview_file = dest_video_path.with_name(f"{dest_video_path.stem}_prev.jpg")
+        self._extract_preview(dest_video_path, preview_file)
+
+        return VisualAsset(
+            file_path=dest_video_path,
+            provider="designed_card",
+            asset_id=f"card_{index}_{shot_index}",
+            creator_name="Nova Studio Procedural",
+            creator_url="",
+            license_name="Generated Explainer Card",
+            asset_url="",
+            relevance_score=50.0,
+            preview_path=str(preview_file),
+            is_fallback_card=True,
+        )
 
     def _generate_explainer_card(
         self,
@@ -764,55 +1235,413 @@ class VisualsManager:
         dest_video_path: Path,
         label: str | None = None,
     ) -> VisualAsset:
-        """Generates dynamic typography explainer card with geometric shape and pan motion."""
-        img = Image.new("RGB", (1080, 1920), (14, 18, 28))
-        draw = ImageDraw.Draw(img)
+        """Alias for backward compatibility."""
+        return self._generate_fallback_card(index, subject, action, duration, dest_video_path, label=label)
 
-        # Concentric tech grid
-        for r in range(100, 800, 90):
-            draw.ellipse((540 - r, 960 - r, 540 + r, 960 + r), outline=(30, 42, 65), width=2)
-        draw.line((540, 200, 540, 1720), fill=(40, 55, 80), width=2)
-        draw.line((100, 960, 980, 960), fill=(40, 55, 80), width=2)
+    def get_candidate_pool(
+        self,
+        queries: list[str],
+        niche: str = "ai_tech",
+        main_subject: str = "",
+    ) -> list[CandidateVisual]:
+        """Retrieves a diverse pool of candidate visuals across providers for the given queries and niche."""
+        clean_queries = self._clean_queries(queries, main_subject, niche=niche)
+        all_cands: list[CandidateVisual] = []
+        seen_ids: set[str] = set()
 
-        # Central Badge
-        font_large = ImageFont.load_default()
-        font_sub = ImageFont.load_default()
+        for q in clean_queries:
+            # 1. Search local library first (instant, offline)
+            try:
+                for c in self.library_searcher.search(query=q, niche=niche, limit=3):
+                    if c.asset_id not in seen_ids:
+                        seen_ids.add(c.asset_id)
+                        all_cands.append(c)
+            except Exception as le:
+                logger.debug(f"Library search error: {le}")
+
+            # 2. Query multi-provider registry (parallel dispatch)
+            try:
+                for c in self.registry.search_all(query=q, niche=niche, media_type="all", total_limit=8):
+                    if c.asset_id not in seen_ids:
+                        seen_ids.add(c.asset_id)
+                        all_cands.append(c)
+            except Exception as re:
+                logger.debug(f"Registry multi-provider search error: {re}")
+
+            # 3. Direct provider search fallbacks if pool is small
+            if len(all_cands) < 3 and self.pixabay_key:
+                for c in self._search_pixabay_videos(q):
+                    if c.asset_id not in seen_ids:
+                        seen_ids.add(c.asset_id)
+                        all_cands.append(c)
+
+        scored = []
+        for c in all_cands:
+            score = self.scorer.score_candidate(c, main_subject, "active motion", clean_queries, niche)
+            if self.scorer.is_acceptable(score):
+                scored.append((score, c))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [c for _, c in scored]
+
+    def _materialize_stock_candidate(
+        self,
+        cand: CandidateVisual,
+        score: float,
+        is_illustrative: bool,
+        shot: ShotPlan,
+        dest_shot_path: Path,
+        direction: str,
+        used_set: set[str],
+    ) -> VisualAsset | None:
         try:
-            font_file = self.settings.resolve_path(self.settings.video.subtitles.font_file)
-            if font_file.exists():
-                font_large = ImageFont.truetype(str(font_file), 68)
-                font_sub = ImageFont.truetype(str(font_file), 40)
-        except Exception:
-            pass
+            ext = ".mp4" if cand.media_type == "video" else ".jpg"
+            cache_file = self._download_to_cache(cand.download_url, ext)
 
-        display_text = (label or subject).upper()
-        bbox = draw.textbbox((0, 0), display_text, font=font_large)
-        tw = bbox[2] - bbox[0]
-        draw.rounded_rectangle((540 - tw // 2 - 40, 860, 540 + tw // 2 + 40, 1020), radius=20, fill=(24, 32, 50), outline=(0, 220, 255), width=4)
-        draw.text((540 - tw // 2, 900), display_text, font=font_large, fill=(255, 255, 255))
+            if cand.media_type == "video":
+                fit_video_shot(cache_file, dest_shot_path, shot.duration, fps=30)
+                shot.fit_method = "video_fit"
+            else:
+                fit_image_shot(cache_file, dest_shot_path, shot.duration, fps=30, direction=direction)
+                shot.fit_method = f"ken_burns_{direction}"
 
-        # Action subtitle
-        sub_text = action.capitalize()
-        bbox_s = draw.textbbox((0, 0), sub_text, font=font_sub)
-        tws = bbox_s[2] - bbox_s[0]
-        draw.text((540 - tws // 2, 1060), sub_text, font=font_sub, fill=(180, 200, 230))
+            if is_illustrative:
+                self._apply_illustrative_badge(dest_shot_path)
+                shot.on_screen_label = "ILLUSTRATIVE FOOTAGE"
+            elif shot.on_screen_label:
+                self._apply_on_screen_label(dest_shot_path, shot.on_screen_label)
 
-        temp_png = dest_video_path.with_suffix(".card.png")
-        img.save(temp_png)
-        self._apply_ken_burns(temp_png, dest_video_path, duration)
-        if temp_png.exists():
-            temp_png.unlink()
+            preview_file = dest_shot_path.with_name(f"{dest_shot_path.stem}_prev.jpg")
+            self._extract_preview(dest_shot_path, preview_file)
+
+            used_set.add(cand.asset_id)
+            shot.chosen_asset_id = cand.asset_id
+            shot.provider = cand.provider
+            shot.media_type = cand.media_type
+            shot.asset_file = str(cache_file)
+            shot.normalized_shot_file = str(dest_shot_path)
+            shot.relevance_score = score
+            shot.is_fallback_card = False
+
+            # Index into local library catalog for future offline reuse
+            try:
+                from nova.library.catalog import MediaLibraryCatalog
+                MediaLibraryCatalog().add_asset(cand, cache_file, niche=getattr(shot, "niche", "general"))
+            except Exception:
+                pass
+
+            return VisualAsset(
+                file_path=dest_shot_path,
+                provider=cand.provider,
+                asset_id=cand.asset_id,
+                creator_name=getattr(cand, "creator_name", ""),
+                creator_url=getattr(cand, "creator_url", ""),
+                license_name=getattr(cand, "license_name", ""),
+                asset_url=getattr(cand, "asset_url", ""),
+                relevance_score=shot.relevance_score,
+                preview_path=str(preview_file),
+                is_fallback_card=False,
+                license_proof=getattr(cand, "license_proof", None),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to materialize candidate '{cand.asset_id}': {e}")
+            used_set.add(cand.asset_id)
+            return None
+
+    def materialize_shot(
+        self,
+        shot: ShotPlan,
+        dest_shot_path: Path,
+        candidate_pool: list[CandidateVisual],
+        used_asset_ids: set[str] | None = None,
+    ) -> VisualAsset:
+        """Materializes a single frame-accurate normalized shot (1080x1920, 30fps CFR) using Phase 3 priority ladder."""
+        dest_shot_path.parent.mkdir(parents=True, exist_ok=True)
+        used_set = used_asset_ids if used_asset_ids is not None else self.used_asset_ids
+
+        # 1. Extract or construct semantic Beat
+        beat_data = shot.metadata.get("beat") if getattr(shot, "metadata", None) else None
+        if beat_data:
+            beat = Beat.from_dict(beat_data)
+        else:
+            entities = BeatPlanner.extract_entities(shot.sentence_text)
+            b_type = BeatPlanner.classify_beat_type(shot.sentence_text, entities)
+            sens, reason = BeatPlanner.check_sensitivity(shot.sentence_text, entities)
+            beat = Beat(
+                beat_id=f"B{shot.shot_index + 1}",
+                beat_index=shot.shot_index,
+                sentence_id=shot.sentence_id,
+                sentence_index=shot.sentence_index,
+                spoken_text=shot.sentence_text,
+                caption_text=shot.sentence_text,
+                start_time=shot.start_time,
+                end_time=shot.end_time,
+                duration=shot.duration,
+                visual_intent=shot.query,
+                entities=entities,
+                beat_type=b_type,
+                sensitivity=sens,
+                sensitivity_reason=reason,
+                search_queries=[shot.query],
+                is_specific_event=bool(sens or "20" in shot.sentence_text),
+            )
+
+        niche = shot.metadata.get("niche", "ai_tech")
+        tier = shot.metadata.get("tier", "tier_a")
+        rec_route = getattr(beat, "recommended_visual_route", "") or shot.metadata.get("recommended_visual_route", "")
+        force_animation = shot.metadata.get("force_animation", False) or getattr(shot, "force_animation", False)
+        direction = ["zoom_in", "zoom_out", "pan_right", "pan_left"][shot.shot_index % 4]
+
+        # Explicit force animation override (from review UI or flag)
+        if force_animation:
+            logger.info(f"Shot #{shot.shot_index + 1} has force_animation enabled. Rendering procedural animation.")
+            render_data_card_for_beat(beat, duration=shot.duration, out_path=dest_shot_path, fps=30)
+            preview_file = dest_shot_path.with_name(f"{dest_shot_path.stem}_prev.jpg")
+            shot.chosen_asset_id = f"motion_{beat.beat_id}"
+            shot.provider = "procedural_motion"
+            shot.media_type = "procedural_card"
+            shot.fit_method = f"procedural_{beat.beat_type.value}"
+            shot.asset_file = str(dest_shot_path)
+            shot.normalized_shot_file = str(dest_shot_path)
+            shot.relevance_score = 95.0
+            shot.is_fallback_card = False
+            return VisualAsset(
+                file_path=dest_shot_path,
+                provider="procedural_motion",
+                asset_id=f"motion_{beat.beat_id}",
+                creator_name="Nova Procedural Engine",
+                creator_url="",
+                license_name="Generated Motion Asset",
+                asset_url="",
+                relevance_score=95.0,
+                preview_path=str(preview_file),
+                is_fallback_card=False,
+            )
+
+        # 2. Score candidate pool against RelevanceGate
+        gate = RelevanceGate(min_threshold=float(getattr(getattr(self.settings, "visual", None), "min_match_score", 55.0)))
+        passing_candidates: list[tuple[float, bool, CandidateVisual]] = []
+
+        for cand in candidate_pool:
+            if cand.asset_id in used_set:
+                continue
+            from nova.providers.base import MediaCandidate
+            m_cand = cand if isinstance(cand, MediaCandidate) else MediaCandidate(
+                provider=cand.provider,
+                asset_id=cand.asset_id,
+                title=cand.title,
+                description=cand.description,
+                tags=cand.tags,
+                preview_url=cand.preview_url,
+                download_url=cand.download_url,
+                media_type=cand.media_type,
+                author=getattr(cand, "creator_name", ""),
+                creator_url=getattr(cand, "creator_url", ""),
+                landing_page_url=getattr(cand, "asset_url", ""),
+                license_proof=getattr(cand, "license_proof", None),
+            )
+            res = gate.evaluate_candidate(m_cand, beat)
+            if res.passed:
+                passing_candidates.append((res.total_score, res.is_illustrative, cand))
+
+        passing_candidates.sort(key=lambda x: x[0], reverse=True)
+
+        # PHASE 3 ROUTE A: Official or primary source asset (NASA, government/filing)
+        if rec_route == "official_document" or (beat.is_specific_event and niche == "space_science"):
+            official_cands = [c for c in passing_candidates if c[2].provider in ("nasa", "wikimedia") and c[0] >= 65.0]
+            if official_cands:
+                score, is_illustrative, cand = official_cands[0]
+                asset = self._materialize_stock_candidate(cand, score, is_illustrative, shot, dest_shot_path, direction, used_set)
+                if asset:
+                    return asset
+
+        # PHASE 3 ROUTE B: Free licensed stock video or image from existing providers
+        if rec_route in ("stock_footage", "stock_image", ""):
+            for score, is_illustrative, cand in passing_candidates:
+                asset = self._materialize_stock_candidate(cand, score, is_illustrative, shot, dest_shot_path, direction, used_set)
+                if asset:
+                    return asset
+
+        # PHASE 3 ROUTE C: Data and diagram animation rendered by our own templates
+        # (for numbers/stats, comparisons, timelines, process flows, or node-and-arrow diagrams)
+        if rec_route in ("data_animation", "diagram_animation") or beat.beat_type in (
+            BeatType.NUMBER_OR_STAT,
+            BeatType.COMPARISON,
+            BeatType.TIMELINE,
+        ):
+            logger.info(
+                f"[Route C] Rendering procedural data/diagram animation for beat {beat.beat_id} ({beat.beat_type.value})."
+            )
+            render_data_card_for_beat(beat, duration=shot.duration, out_path=dest_shot_path, fps=30)
+            preview_file = dest_shot_path.with_name(f"{dest_shot_path.stem}_prev.jpg")
+            shot.chosen_asset_id = f"motion_{beat.beat_id}"
+            shot.provider = "procedural_motion"
+            shot.media_type = "procedural_card"
+            shot.fit_method = f"procedural_{beat.beat_type.value}"
+            shot.asset_file = str(dest_shot_path)
+            shot.normalized_shot_file = str(dest_shot_path)
+            shot.relevance_score = 92.0
+            shot.is_fallback_card = False
+            return VisualAsset(
+                file_path=dest_shot_path,
+                provider="procedural_motion",
+                asset_id=f"motion_{beat.beat_id}",
+                creator_name="Nova Procedural Engine",
+                creator_url="",
+                license_name="Generated Motion Asset",
+                asset_url="",
+                relevance_score=92.0,
+                preview_path=str(preview_file),
+                is_fallback_card=False,
+            )
+
+        # PHASE 3 ROUTE D: Gemini image generation for beats needing specific illustration
+        # Check strict safety: NEVER use AI for Tier B sensitive news, named real people, crime/fraud
+        is_sensitive = (tier == "tier_b") or (beat.sensitivity is True) or any(
+            w in shot.sentence_text.lower() for w in ["fraud", "charged", "guilty", "indicted", "arrested", "alleged", "prosecutor"]
+        )
+        ai_allowed = (
+            not is_sensitive
+            and getattr(self.settings.gemini, "enabled", True)
+            and not getattr(self.settings, "no_ai", False)
+            and self.gemini_client.is_available()
+            and self.gemini_client.tracker.can_spend(0.07, self.gemini_client.daily_budget)
+        )
+
+        if ai_allowed:
+            try:
+                logger.info(f"[Route D] Requesting 2 Gemini image candidates for beat {beat.beat_id} ('{beat.visual_intent[:36]}')...")
+                ai_cands = self.gemini_client.generate_image_candidates(
+                    prompt=beat.visual_intent, niche=niche, count=2, seed_offset=shot.shot_index
+                )
+                ai_scored = []
+                for cand_path in ai_cands:
+                    from nova.providers.base import MediaCandidate
+                    m_cand = MediaCandidate(
+                        provider="gemini_imagen",
+                        asset_id=f"ai_{cand_path.stem}",
+                        title=f"AI Illustration: {beat.visual_intent[:40]}",
+                        description=beat.visual_intent,
+                        tags=[niche, "ai_generated", "illustration"],
+                        preview_url=str(cand_path),
+                        download_url=str(cand_path),
+                        media_type="image",
+                        author="Google Gemini",
+                        creator_url="https://ai.google.dev",
+                        landing_page_url="https://ai.google.dev",
+                        license_proof=None,
+                    )
+                    res = gate.evaluate_candidate(m_cand, beat)
+                    if res.passed:
+                        ai_scored.append((res.total_score, cand_path))
+
+                if ai_scored:
+                    ai_scored.sort(key=lambda x: x[0], reverse=True)
+                    best_score, best_img = ai_scored[0]
+
+                    # PHASE 3 ROUTE E: Veo Hero Video (max 1 per video, 4-8s, behind veo_enabled)
+                    if (
+                        rec_route == "ai_video"
+                        and self.gemini_client.veo_enabled
+                        and not self.ai_hero_video_generated
+                        and 4.0 <= shot.duration <= 8.0
+                    ):
+                        veo_file = self.gemini_client.generate_veo_hero_video(
+                            best_img, prompt=beat.visual_intent, duration_seconds=shot.duration
+                        )
+                        if veo_file and veo_file.exists():
+                            self.ai_hero_video_generated = True
+                            fit_video_shot(veo_file, dest_shot_path, shot.duration, fps=30)
+                            GeminiClient.apply_ai_illustration_badge(dest_shot_path, dest_shot_path)
+                            preview_file = dest_shot_path.with_name(f"{dest_shot_path.stem}_prev.jpg")
+                            self._extract_preview(dest_shot_path, preview_file)
+
+                            shot.chosen_asset_id = f"veo_{veo_file.stem}"
+                            shot.provider = "gemini_veo"
+                            shot.media_type = "video"
+                            shot.fit_method = "veo_motion"
+                            shot.asset_file = str(veo_file)
+                            shot.normalized_shot_file = str(dest_shot_path)
+                            shot.relevance_score = best_score
+                            shot.is_fallback_card = False
+                            shot.on_screen_label = "AI ILLUSTRATION"
+                            shot.metadata["is_ai_generated"] = True
+                            shot.metadata["needs_synthetic_disclosure"] = True
+
+                            return VisualAsset(
+                                file_path=dest_shot_path,
+                                provider="gemini_veo",
+                                asset_id=f"veo_{veo_file.stem}",
+                                creator_name="Google Gemini Veo",
+                                creator_url="https://ai.google.dev",
+                                license_name="AI-generated",
+                                asset_url="https://ai.google.dev",
+                                relevance_score=best_score,
+                                preview_path=str(preview_file),
+                                is_fallback_card=False,
+                            )
+
+                    # Animate AI still with Ken Burns drift, particle overlay, and AI illustration badge
+                    self.gemini_client.animate_ai_still(
+                        best_img, dest_shot_path, duration=shot.duration, fps=30, direction=direction
+                    )
+                    preview_file = dest_shot_path.with_name(f"{dest_shot_path.stem}_prev.jpg")
+                    self._extract_preview(dest_shot_path, preview_file)
+
+                    shot.chosen_asset_id = f"ai_{best_img.stem}"
+                    shot.provider = "gemini_imagen"
+                    shot.media_type = "image"
+                    shot.fit_method = f"ai_animated_{direction}"
+                    shot.asset_file = str(best_img)
+                    shot.normalized_shot_file = str(dest_shot_path)
+                    shot.relevance_score = best_score
+                    shot.is_fallback_card = False
+                    shot.on_screen_label = "AI ILLUSTRATION"
+                    shot.metadata["is_ai_generated"] = True
+                    shot.metadata["needs_synthetic_disclosure"] = True
+
+                    return VisualAsset(
+                        file_path=dest_shot_path,
+                        provider="gemini_imagen",
+                        asset_id=f"ai_{best_img.stem}",
+                        creator_name="Google Gemini",
+                        creator_url="https://ai.google.dev",
+                        license_name="AI-generated",
+                        asset_url="https://ai.google.dev",
+                        relevance_score=best_score,
+                        preview_path=str(preview_file),
+                        is_fallback_card=False,
+                    )
+            except Exception as ai_e:
+                logger.warning(f"Route D AI generation encountered error ({ai_e}), falling back to procedural animation.")
+
+        # Guaranteed Safe Fallback: Route C Procedural Animation
+        logger.info(
+            f"[Route C Fallback] Rendering procedural data/diagram animation for beat {beat.beat_id} ({beat.beat_type.value})."
+        )
+        render_data_card_for_beat(beat, duration=shot.duration, out_path=dest_shot_path, fps=30)
+        preview_file = dest_shot_path.with_name(f"{dest_shot_path.stem}_prev.jpg")
+
+        shot.chosen_asset_id = f"motion_{beat.beat_id}"
+        shot.provider = "procedural_motion"
+        shot.media_type = "procedural_card"
+        shot.fit_method = f"procedural_{beat.beat_type.value}"
+        shot.asset_file = str(dest_shot_path)
+        shot.normalized_shot_file = str(dest_shot_path)
+        shot.relevance_score = 92.0
+        shot.is_fallback_card = False
 
         return VisualAsset(
-            file_path=dest_video_path,
-            provider="designed_card",
-            asset_id=f"card_{index}",
-            creator_name="Nova Studio Procedural",
+            file_path=dest_shot_path,
+            provider="procedural_motion",
+            asset_id=f"motion_{beat.beat_id}",
+            creator_name="Nova Procedural Engine",
             creator_url="",
-            license_name="Generated Explainer Card",
+            license_name="Generated Motion Asset",
             asset_url="",
-            relevance_score=50.0,
-            is_fallback_card=True,
+            relevance_score=92.0,
+            preview_path=str(preview_file),
+            is_fallback_card=False,
         )
 
     def generate_alignment_report(
@@ -835,11 +1664,15 @@ class VisualsManager:
             prov = asset.provider.upper()
             lic = asset.license_name
 
-            thumb_tag = f"<img src='{asset.preview_path}' width='90' style='border-radius:6px;'>" if asset.preview_path else "<span>Card</span>"
+            thumb_tag = (
+                f"<img src='{asset.preview_path}' width='90' style='border-radius:6px;'>"
+                if asset.preview_path
+                else "<span>Card</span>"
+            )
 
             rows_html.append(f"""
             <tr>
-              <td><strong>S{i+1}</strong> ({role})</td>
+              <td><strong>S{i + 1}</strong> ({role})</td>
               <td>{text}</td>
               <td>{duration:.2f}s</td>
               <td>{thumb_tag}</td>
@@ -872,9 +1705,9 @@ class VisualsManager:
   <h1>🎬 Alignment & Subtitle Synchronization Report</h1>
   <div class="stats-card">
     <div class="stat-item">Script ID: <span class="stat-val">#{script_id}</span></div>
-    <div class="stat-item">Median Subtitle Drift: <span class="stat-val">{sync_stats.get('median_drift_ms', 0):.1f} ms</span></div>
-    <div class="stat-item">Max Word Drift: <span class="stat-val">{sync_stats.get('max_drift_ms', 0):.1f} ms</span></div>
-    <div class="stat-item">Sync Gate: <span class="stat-val">{'PASSED' if sync_stats.get('passed_sync') else 'FLAGGED'}</span></div>
+    <div class="stat-item">Median Subtitle Drift: <span class="stat-val">{sync_stats.get("median_drift_ms", 0):.1f} ms</span></div>
+    <div class="stat-item">Max Word Drift: <span class="stat-val">{sync_stats.get("max_drift_ms", 0):.1f} ms</span></div>
+    <div class="stat-item">Sync Gate: <span class="stat-val">{"PASSED" if sync_stats.get("passed_sync") else "FLAGGED"}</span></div>
   </div>
   <table>
     <thead>
@@ -889,7 +1722,7 @@ class VisualsManager:
       </tr>
     </thead>
     <tbody>
-      {''.join(rows_html)}
+      {"".join(rows_html)}
     </tbody>
   </table>
 </body>

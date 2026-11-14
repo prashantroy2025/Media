@@ -47,6 +47,7 @@ class VisualRelevanceScorer:
         3. Match with action_or_state (weight: 15%)
         4. Domain compatibility penalty (e.g. space visual for business = -50%)
         """
+
         def tokenize(text: str) -> set[str]:
             stopwords = {"the", "a", "an", "of", "in", "and", "or", "to", "for", "with", "on", "at", "by", "from"}
             words = re.findall(r"\w+", text.lower())
@@ -60,13 +61,30 @@ class VisualRelevanceScorer:
 
         # Domain mismatch penalty: NASA or astronomical imagery on business/fintech topics
         space_entities = {
-            "planet", "galaxy", "nebula", "mars", "jupiter", "saturn", "moon", "solar", "orbit",
-            "telescope", "astronaut", "crater", "star", "hubble", "spacecraft", "apollo", "pulsar"
+            "planet",
+            "galaxy",
+            "nebula",
+            "mars",
+            "jupiter",
+            "saturn",
+            "moon",
+            "solar",
+            "orbit",
+            "telescope",
+            "astronaut",
+            "crater",
+            "star",
+            "hubble",
+            "spacecraft",
+            "apollo",
+            "pulsar",
         }
         if niche in ["business", "ai_tech"]:
             space_matches = cand_tokens.intersection(space_entities)
             if space_matches and candidate.provider == "nasa":
-                logger.debug(f"Rejecting candidate '{candidate.title}' due to space domain mismatch for niche '{niche}'")
+                logger.debug(
+                    f"Rejecting candidate '{candidate.title}' due to space domain mismatch for niche '{niche}'"
+                )
                 return 0.0
 
         # 1. Subject match (40 pts)

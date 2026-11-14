@@ -37,6 +37,10 @@ class Topic(Base):
     status = Column(String(30), default="pending")  # pending, ranked, used, skipped, unsafe_skipped
     safety_status = Column(String(30), default="safe")  # safe, flagged, unsafe
     safety_reason = Column(String(500), default="")
+    tier = Column(String(20), default="tier_a")
+    requires_manual_approval = Column(Boolean, default=False)
+    source_domains_json = Column(Text, default="[]")
+    is_demo = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     used_at = Column(DateTime, nullable=True)
 
@@ -66,6 +70,7 @@ class Script(Base):
     model_used = Column(String(50), default="llama3.2:3b")
     script_quality_score = Column(Float, default=0.0)
     is_template = Column(Boolean, default=False)
+    is_demo = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
     topic = relationship("Topic", back_populates="scripts")
@@ -128,6 +133,19 @@ class Video(Base):
     scheduled_time_utc = Column(DateTime, nullable=True)
     scheduled_time_us_eastern = Column(String(50), default="")
     scheduled_time_ist = Column(String(50), default="")
+    tier = Column(String(20), default="tier_a")
+    requires_manual_approval = Column(Boolean, default=False)
+    monetization_risk = Column(String(20), default="low")
+    audit_scorecard_json = Column(Text, default="{}")
+    as_of_date = Column(String(50), default="")
+    last_reverified_at = Column(DateTime, nullable=True)
+    reverify_status = Column(String(30), default="verified")
+    approval_checklist_json = Column(Text, default="{}")
+    checkpoint_stage = Column(String(50), default="completed")
+    shot_plan_json = Column(Text, default="{}")
+    ai_usage_json = Column(Text, default="{}")
+    needs_synthetic_disclosure = Column(Boolean, default=False)
+    is_demo = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     approved_at = Column(DateTime, nullable=True)
 
@@ -153,6 +171,30 @@ class Video(Base):
         except Exception:
             return []
 
+    def get_audit_scorecard(self) -> dict:
+        try:
+            return json.loads(self.audit_scorecard_json) if self.audit_scorecard_json else {}
+        except Exception:
+            return {}
+
+    def get_approval_checklist(self) -> dict:
+        try:
+            return json.loads(self.approval_checklist_json) if self.approval_checklist_json else {}
+        except Exception:
+            return {}
+
+    def get_shot_plan(self) -> dict:
+        try:
+            return json.loads(self.shot_plan_json) if self.shot_plan_json else {}
+        except Exception:
+            return {}
+
+    def get_ai_usage(self) -> dict:
+        try:
+            return json.loads(self.ai_usage_json) if self.ai_usage_json else {}
+        except Exception:
+            return {}
+
 
 class StockAttribution(Base):
     __tablename__ = "stock_attributions"
@@ -166,8 +208,50 @@ class StockAttribution(Base):
     creator_url = Column(String(500), default="")
     license_name = Column(String(100), default="Free to use")
     asset_url = Column(String(1000), default="")
+    is_fallback_card = Column(Boolean, default=False)
+    license_proof_json = Column(Text, default="{}")
 
     video = relationship("Video", back_populates="attributions")
+
+
+class LibraryAsset(Base):
+    """Local media library catalog asset record."""
+    __tablename__ = "library_assets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    asset_id = Column(String(120), unique=True, index=True, nullable=False)
+    provider = Column(String(50), nullable=False)
+    media_type = Column(String(20), default="video")
+    local_path = Column(String(500), nullable=False)
+    title = Column(String(300), default="")
+    description = Column(Text, default="")
+    tags_json = Column(Text, default="[]")
+    niche = Column(String(50), default="general", index=True)
+    width = Column(Integer, default=1920)
+    height = Column(Integer, default=1080)
+    duration = Column(Float, default=0.0)
+    file_size_bytes = Column(Integer, default=0)
+    dhash = Column(String(64), default="")
+
+    # License & Provenance
+    license_id = Column(String(50), default="cc0")
+    license_name = Column(String(150), default="")
+    license_url = Column(String(500), default="")
+    landing_page_url = Column(String(500), default="")
+    creator_name = Column(String(200), default="")
+    creator_url = Column(String(500), default="")
+    attribution_required = Column(Boolean, default=False)
+    attribution_text = Column(String(500), default="")
+    commercial_use_ok = Column(Boolean, default=True)
+    modifications_ok = Column(Boolean, default=True)
+    is_public_domain = Column(Boolean, default=False)
+    license_proof_json = Column(Text, default="{}")
+
+    # Usage and LRU
+    downloaded_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    last_used_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    usage_count = Column(Integer, default=0)
+    is_protected = Column(Boolean, default=False)
 
 
 class Publication(Base):
@@ -339,6 +423,14 @@ class DatabaseManager:
                         conn.exec_driver_sql("ALTER TABLE topics ADD COLUMN safety_status VARCHAR(30) DEFAULT 'safe'")
                     if "safety_reason" not in existing_t_cols:
                         conn.exec_driver_sql("ALTER TABLE topics ADD COLUMN safety_reason VARCHAR(500) DEFAULT ''")
+                    if "tier" not in existing_t_cols:
+                        conn.exec_driver_sql("ALTER TABLE topics ADD COLUMN tier VARCHAR(20) DEFAULT 'tier_a'")
+                    if "requires_manual_approval" not in existing_t_cols:
+                        conn.exec_driver_sql("ALTER TABLE topics ADD COLUMN requires_manual_approval BOOLEAN DEFAULT 0")
+                    if "source_domains_json" not in existing_t_cols:
+                        conn.exec_driver_sql("ALTER TABLE topics ADD COLUMN source_domains_json TEXT DEFAULT '[]'")
+                    if "is_demo" not in existing_t_cols:
+                        conn.exec_driver_sql("ALTER TABLE topics ADD COLUMN is_demo BOOLEAN DEFAULT 0")
 
                 # Check scripts columns
                 res = conn.exec_driver_sql("PRAGMA table_info(scripts)")
@@ -357,13 +449,17 @@ class DatabaseManager:
                     if "angle" not in existing_cols:
                         conn.exec_driver_sql("ALTER TABLE scripts ADD COLUMN angle VARCHAR(100) DEFAULT ''")
                     if "inspiration_ref_ids_json" not in existing_cols:
-                        conn.exec_driver_sql("ALTER TABLE scripts ADD COLUMN inspiration_ref_ids_json TEXT DEFAULT '[]'")
+                        conn.exec_driver_sql(
+                            "ALTER TABLE scripts ADD COLUMN inspiration_ref_ids_json TEXT DEFAULT '[]'"
+                        )
                     if "prompt_version" not in existing_cols:
                         conn.exec_driver_sql("ALTER TABLE scripts ADD COLUMN prompt_version VARCHAR(50) DEFAULT 'v4.0'")
                     if "script_quality_score" not in existing_cols:
                         conn.exec_driver_sql("ALTER TABLE scripts ADD COLUMN script_quality_score FLOAT DEFAULT 0.0")
                     if "is_template" not in existing_cols:
                         conn.exec_driver_sql("ALTER TABLE scripts ADD COLUMN is_template BOOLEAN DEFAULT 0")
+                    if "is_demo" not in existing_cols:
+                        conn.exec_driver_sql("ALTER TABLE scripts ADD COLUMN is_demo BOOLEAN DEFAULT 0")
 
                 # Check videos columns
                 res_v = conn.exec_driver_sql("PRAGMA table_info(videos)")
@@ -378,9 +474,7 @@ class DatabaseManager:
                             "ALTER TABLE videos ADD COLUMN contact_sheet_path VARCHAR(1000) DEFAULT ''"
                         )
                     if "sync_frames_dir" not in existing_v_cols:
-                        conn.exec_driver_sql(
-                            "ALTER TABLE videos ADD COLUMN sync_frames_dir VARCHAR(1000) DEFAULT ''"
-                        )
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN sync_frames_dir VARCHAR(1000) DEFAULT ''")
                     if "subtitle_sync_stats_json" not in existing_v_cols:
                         conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN subtitle_sync_stats_json TEXT DEFAULT '{}'")
                     if "visual_alignment_json" not in existing_v_cols:
@@ -393,6 +487,32 @@ class DatabaseManager:
                         )
                     if "scheduled_time_ist" not in existing_v_cols:
                         conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN scheduled_time_ist VARCHAR(50) DEFAULT ''")
+                    if "tier" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN tier VARCHAR(20) DEFAULT 'tier_a'")
+                    if "requires_manual_approval" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN requires_manual_approval BOOLEAN DEFAULT 0")
+                    if "monetization_risk" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN monetization_risk VARCHAR(20) DEFAULT 'low'")
+                    if "audit_scorecard_json" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN audit_scorecard_json TEXT DEFAULT '{}'")
+                    if "as_of_date" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN as_of_date VARCHAR(50) DEFAULT ''")
+                    if "last_reverified_at" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN last_reverified_at DATETIME")
+                    if "reverify_status" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN reverify_status VARCHAR(30) DEFAULT 'verified'")
+                    if "approval_checklist_json" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN approval_checklist_json TEXT DEFAULT '{}'")
+                    if "checkpoint_stage" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN checkpoint_stage VARCHAR(50) DEFAULT 'completed'")
+                    if "is_demo" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN is_demo BOOLEAN DEFAULT 0")
+                    if "shot_plan_json" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN shot_plan_json TEXT DEFAULT '{}'")
+                    if "ai_usage_json" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN ai_usage_json TEXT DEFAULT '{}'")
+                    if "needs_synthetic_disclosure" not in existing_v_cols:
+                        conn.exec_driver_sql("ALTER TABLE videos ADD COLUMN needs_synthetic_disclosure BOOLEAN DEFAULT 0")
 
                 # Check publications columns
                 res_p = conn.exec_driver_sql("PRAGMA table_info(publications)")
@@ -408,6 +528,15 @@ class DatabaseManager:
                         )
                     if "retention_rate" not in existing_p_cols:
                         conn.exec_driver_sql("ALTER TABLE publications ADD COLUMN retention_rate FLOAT DEFAULT 0.0")
+
+                # Check stock_attributions columns
+                res_sa = conn.exec_driver_sql("PRAGMA table_info(stock_attributions)")
+                existing_sa_cols = {row[1] for row in res_sa.fetchall()}
+                if existing_sa_cols:
+                    if "is_fallback_card" not in existing_sa_cols:
+                        conn.exec_driver_sql("ALTER TABLE stock_attributions ADD COLUMN is_fallback_card BOOLEAN DEFAULT 0")
+                    if "license_proof_json" not in existing_sa_cols:
+                        conn.exec_driver_sql("ALTER TABLE stock_attributions ADD COLUMN license_proof_json TEXT DEFAULT '{}'")
 
                 conn.commit()
         except Exception:

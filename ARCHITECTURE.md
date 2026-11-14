@@ -1,6 +1,6 @@
-# Nova Autopilot v3.0: Architecture & System Design 📐
+# Nova Autopilot v8.0: Architecture & System Design 📐
 
-> Technical specification, component diagrams, database schema, and extensibility guides for Nova Autopilot v3.0.
+> Technical specification, component diagrams, database schema, and motion design engine for Nova Autopilot v8.0.
 
 ---
 
@@ -8,136 +8,162 @@
 
 ```mermaid
 flowchart TD
-    subgraph Discovery ["1. Multi-Niche Sourcing & Collector Layer"]
+    subgraph Discovery ["1. Multi-Niche Sourcing & Topic Safety Policy"]
         arXiv[arXiv cs.AI / cs.LG RSS] -->|ai_tech| Norm[Normalized Raw Topic]
-        TechRSS[MIT Tech Review / Ars Technica / Verge] -->|ai_tech| Norm
+        TechRSS[MIT Tech Review / Ars Technica] -->|ai_tech| Norm
         EDGAR[SEC EDGAR Press & Filings RSS] -->|business| Norm
         BizRSS[BBC & CNBC Business / Finance] -->|business| Norm
         NASA[NASA APOD & Library API] -->|space_science| Norm
         SciDaily[ScienceDaily / Phys.org / Nature] -->|space_science| Norm
         GoogleTrends[Google Trends US Daily RSS] --> Norm
-        Norm --> NicheTag[Niche Tagging & Deduplication Engine]
-        NicheTag --> DB[(SQLite: nova.db)]
+        Norm --> SafetyPolicy[Three-Tier Topic Policy Evaluator]
+        SafetyPolicy -->|Tier A: Normal| DB[(SQLite: nova.db)]
+        SafetyPolicy -->|Tier B: Sensitive Allowed| DB
+        SafetyPolicy -->|Tier C: Prohibited| Dropped[Dropped Topic]
     end
 
-    subgraph Scheduling ["2. Niche Balancing & Prime-Time Scheduler"]
+    subgraph Scheduling ["2. Niche Balancing & Dispatch Engine"]
         DB --> NicheSched[Deficit-Based Niche Scheduler: 14d Window]
         NicheSched -->|50% ai_tech, 25% biz, 25% space| NicheChoice[Chosen Niche]
         NicheChoice --> Ranker[Topic Ranker: Target Niche Prioritization]
         Ranker --> SelectedTopic[Selected Grounded Topic]
         SelectedTopic --> ScheduleEngine[US Prime-Time Scheduling Engine]
-        ScheduleEngine --> TimeSlot[US Eastern Peak & IST Conversion]
     end
 
-    subgraph Intelligence ["3. Fact Grounding & Strict Compliance"]
+    subgraph Intelligence ["3. Fact Grounding & Scriptwriting Engine"]
         SelectedTopic --> SW[Scriptwriter Engine]
         Facts[Structured Fact Extractor: Step A] --> SW
         Persona[Persona Guide: persona.md + Niche Tweaks] --> SW
         LLM[Local Ollama llama3.2:3b / Groq / Gemini] --> SW
         SW --> Verifier[Fact Grounding Verifier: Step C]
-        SW --> BizCompliance[Business Zero-Advice & Banned Phrase Filter]
-        SW --> DualUnits[Code-Based Dual Units Engine: imperial + metric]
+        SW --> BizCompliance[Business Zero-Advice & Neutrality Filter]
         BizCompliance --> ValidScript[Verified Script + Mandatory Disclaimer]
-        DualUnits --> ValidScript
         ValidScript --> DB
     end
 
-    subgraph Synthesis ["4. Voice, Visuals & Captions"]
-        ValidScript --> TTS[Edge TTS: en-US-ChristopherNeural]
+    subgraph VoiceSync ["4. Voiceover & Forced Alignment Sync"]
+        ValidScript --> Normalizer[Text Normalizer & Pronunciations]
+        Normalizer --> TTS[Edge TTS: en-US-ChristopherNeural]
         TTS --> PauseTrimmer[FFmpeg Pause Compression: 0.25s Cap]
-        PauseTrimmer --> VoiceAudio[Calibrated Audio Stream: 165-185 WPM]
-        
-        ValidScript --> Visuals[Visuals Provider Chain]
-        Visuals --> NASA_Media[NASA Image & Video Library: Keyless]
-        Visuals --> Wiki_Media[Wikimedia Commons API: Keyless CC0/CC-BY]
-        Visuals --> Openverse[Openverse CC Search: Keyless]
-        Visuals --> Stock[Pexels & Pixabay Stock APIs]
-        Visuals --> KenBurns[Ken Burns Dynamic Motion Engine]
-        Visuals --> StatBadge[Key Stat Glassmorphic Badge Overlay]
-        
-        VoiceAudio --> CaptionEngine[Karaoke Caption Generator]
-        CaptionEngine --> WordHighlights[Word-by-Word Highlight Bundle: Safe Zone y=1150]
-        
-        MusicAssets[assets/music/] --> MusicMgr[Niche Mood Music Mixer]
-        MusicMgr --> Ducking[Voice Ducking 12% + SFX Design]
+        PauseTrimmer --> VoiceAudio[Calibrated Audio Stream: 160-185 WPM]
+        VoiceAudio --> WhisperAlign[faster-whisper Forced Alignment: 0.0ms Drift]
+        WhisperAlign --> WordEvents[Word Timestamp Dialogue Events]
     end
 
-    subgraph Assembly ["5. Hardware-Accelerated Rendering & Quality Gate"]
-        Visuals --> ConcatFilter[FFmpeg Video Concat with setsar=1]
-        ConcatFilter --> RenderEngine[FFmpeg Assembly: h264_videotoolbox]
-        VoiceAudio --> RenderEngine
-        WordHighlights --> RenderEngine
-        Ducking --> RenderEngine
-        RenderEngine --> FinalMP4[Final Rendered Short Video: output/*.mp4]
-        FinalMP4 --> ThumbGen[Pillow Thumbnail Generator: output/*.jpg]
-        FinalMP4 --> QualityGate[8-Point Quality Gate & Business Audit]
-        QualityGate --> ContactSheet[9-Frame Contact Sheet: output/contact_sheet_*.jpg]
-        QualityGate --> DB
+    subgraph TimelineShots ["5. Multi-Shot Timeline & Visual Matching"]
+        ValidScript --> TLBuilder[TimelineBuilder: 1.5s - 3.0s Beats]
+        TLBuilder --> VisualManager[VisualsManager: Multi-Source Engine]
+        VisualManager --> NASA_Media[NASA Image & Video Library]
+        VisualManager --> Wiki_Media[Wikimedia Commons API]
+        VisualManager --> Stock[Pexels & Pixabay APIs]
+        VisualManager --> ShotPlanner[open_clip Semantic Relevance Scorer]
+        ShotPlanner --> ShotNorm[Isolated Shot Normalization: 30fps CFR yuv420p]
     end
 
-    subgraph Distribution ["6. Review Studio & Automated Publishing"]
+    subgraph MotionSound ["6. Cinematic Motion Design & Sound Design"]
+        WordEvents --> MotionBuilder[MotionPlanBuilder: Timed Motion Events]
+        MotionBuilder --> EasingEngine[Pillow 2x Supersampled Easing Engine]
+        EasingEngine --> TransparentMOV[Transparent RGBA Overlay Stream: .mov]
+        VoiceAudio --> AudioMaster[EBU R128 Loudness Normalizer: -14 LUFS]
+        MusicAssets[assets/music/] --> AudioMaster
+        SFXAssets[assets/sfx/] --> AudioMaster
+    end
+
+    subgraph AssemblyQuality ["7. Video Assembly & Scorecard Audit"]
+        ShotNorm --> ConcatDemux[FFmpeg Concat Demuxer]
+        ConcatDemux --> ColorGrade[Color Grading: eq + unsharp + vignette]
+        TransparentMOV --> Compositor[FFmpeg Overlay Composition Pass]
+        ColorGrade --> Compositor
+        AudioMaster --> Compositor
+        Compositor --> FinalMP4[Final Rendered Short Video: output/*.mp4]
+        FinalMP4 --> QualityGate[14-Point Quality Gate]
+        FinalMP4 --> Auditor[25-Point Empirical Scorecard Audit: >= 90%]
+        Auditor --> DB
+        Auditor --> ScorecardHTML[output/audit_id.html & json]
+    end
+
+    subgraph Distribution ["8. Review Studio & Manual Approval Guard"]
         FinalMP4 --> ReviewUI[FastAPI Review Studio :8765]
-        QualityGate --> ReviewUI
-        TimeSlot --> ReviewUI
-        ReviewUI -->|User Approval| PubMgr[Publishing Manager]
-        PubMgr --> YTPub[YouTube Shorts Publisher: status.publishAt RFC 3339]
-        PubMgr --> PublishQueue[Local Publish Queue: PublishQueueManager]
-        PublishQueue --> Launchd[macOS Launchd Agent: Every 600s]
-        Launchd --> SleepWake[pmset Repeat Wake Script]
-        YTPub --> YTPlatform[YouTube Shorts @NovaPrashantroy]
-        YTPlatform -.-> Analytics[YouTube Analytics: Country & Retention Breakdown]
-        Analytics -.->|Learned Weights| LearnLoop[Guardrailed Niche Learning Loop]
-        LearnLoop -.-> DB
+        ScorecardHTML --> ReviewUI
+        DB -->|Tier B Videos| ManualGuard[Manual Checklist Approval Required]
+        ManualGuard -->|User Signs 5-Point Checklist| ApprovedForPublish[Publish Queue]
+        ManualGuard -->|Auto-Publish Blocked| HeldInQueue[Held in Review Queue]
+        ApprovedForPublish --> YTPub[YouTube Shorts Publisher: status.publishAt RFC 3339]
     end
 ```
 
 ---
 
-## 2. End-to-End Linear Execution Lifecycle
+## 2. End-to-End Linear Execution Lifecycle (14 Stages)
 
 To guarantee that the **8 GB unified memory limit of the Apple M2** is strictly respected, stages execute sequentially with immediate resource deallocation:
 
-### Stage 1: Multi-Niche Fact & News Discovery (`nova.collectors`)
-- Multiple failure-isolated collectors fetch fresh candidate topics with distinct timeouts and retries:
-  - `ArxivAICollector`: arXiv `cs.AI` and `cs.LG` recent abstracts.
-  - `EDGARCollector`: US SEC press releases and corporate disclosures with custom `User-Agent`.
-  - `BusinessNewsCollector`: BBC Business and CNBC Business & Finance RSS feeds.
-  - `TechNewsCollector`: The Verge, Ars Technica, and MIT Technology Review feeds.
-  - `NASACollector`: APOD and breaking NASA mission discoveries.
-  - `ScienceNewsCollector`: ScienceDaily, Phys.org, Nature headlines.
-  - `GoogleTrendsCollector`: Google Trends US daily trending queries.
-  - `HackerNewsCollector`: Tech innovation velocity.
-- Batch deduplication uses a pre-fetched set of SHA-256 hashes over normalized title tokens to prevent SQLite duplicate key errors.
+### Stage 1: Topic Discovery & Ingestion (`nova.collectors`)
+- Collects candidate topics across technical, corporate, scientific, and mainstream RSS and API feeds.
+- Batch deduplication uses a pre-fetched set of SHA-256 hashes over normalized tokens.
 
-### Stage 2: Deficit-Based Niche Balancing & Topic Selection (`nova.niches` & `nova.ranking`)
-- Queries rolling 14-day history in `nova.db` and calculates actual posting share vs target weights:
-  - 50% AI & Technology (`ai_tech`)
-  - 25% Business & Economics (`business`)
-  - 25% Space & Science (`space_science`)
-- Selects the niche with the highest deficit.
-- **Hard Constraint**: If the last two videos were in the same niche, that niche is strictly disqualified from consecutive selection.
-- `TopicRanker` filters candidate topics specifically matching the chosen niche and scores surprise value.
+### Stage 2: Three-Tier Topic Safety Policy & Niche Selection (`nova.topic_safety`, `nova.niches`)
+- Classifies topics into **Tier A** (Normal), **Tier B** (Sensitive News Allowed with strict sources & checklist), and **Tier C** (Prohibited Sensationalism).
+- Requires 1 primary or 2 independent reputable sources for legal/corporate controversies.
+- Deficit-based scheduler balances 50% `ai_tech`, 25% `business`, 25% `space_science`.
 
-### Stage 3: Fact-Grounded Script Generation & Compliance (`nova.scriptwriter`)
-- **Step A (Research)**: Queries Wikipedia/NASA APIs for article extracts and compiles structured candidate facts (`StructuredFact`).
-- **Step B (Generation)**: Injects niche-specific persona guidance and hook formulas:
-  - `ai_tech`: Explains system mechanism + 1 real-world comparison. No buzzwords.
-  - `business`: Explains economic mechanisms. Strict zero financial advice. All numbers must carry time context ("in 2023", "as of Q3 2025"). Mandatory disclaimer: *"For entertainment and education only. Not financial advice."*
-  - `space_science`: Mind-blowing cosmic physics with code-based dual unit conversions.
-- **Step C (Verification)**: Automatically scans output for hallucinations, verifies numbers against source facts, enforces <= 12 words hook, and checks for banned phrases.
+### Stage 3: Fact-Grounded Script Generation (`nova.scriptwriter`)
+- Step A: Extracts structured factual claims and causal outcomes.
+- Step B: Injects niche persona, hook formula (<= 12 words), and verified angle.
+- Step C: Checks fact fidelity, duplicate sentences (token Jaccard < 0.80), and neutrality.
 
-### Stage 4: Voiceover & Pacing Calibration (`nova.tts`)
-- Narrates using Edge-TTS with `en-US-ChristopherNeural` (energetic, authoritative documentary voice).
-- Trims leading/trailing silence and caps pauses between sentences at 0.25 seconds using FFmpeg `silenceremove` filter.
-- Calibrates speaking pace to 150–200 words per minute (re-synthesizes if out of bounds).
+### Stage 4: Voiceover & Pacing Calibration (`nova.tts`, `nova.utils.normalizer`)
+- Pronunciation expansion via `config/pronunciations.yaml`.
+- Narrates via Edge-TTS `en-US-ChristopherNeural`, trims dead pauses, calibrating speaking pace to **160–185 WPM**.
 
-### Stage 5: Karaoke Subtitle Generation (`nova.captions`)
-- Converts word timestamps into ASS dialogue lines and pre-renders transparent 1080x1920 PNG cards with word-by-word active highlight in vivid yellow (`#FFD700`).
-- Positions text in the lower-middle safe zone (`y=1150`) to avoid YouTube Shorts and Instagram Reels UI overlays.
+### Stage 5: Forced Alignment & Subtitle Synchronization (`nova.alignment`, `nova.captions`)
+- Transcribes audio using `faster-whisper` (`tiny`, CPU int8).
+- Aligns word timestamps to script tokens via `difflib.SequenceMatcher`. Enforces median drift <= 60 ms (measured 0.0 ms).
+- Pre-renders single transparent RGBA caption stream (`.mov`) using Pillow.
 
-### Stage 6: Visual Asset Acquisition (`nova.visuals`)
-- 6-tier fallback chain:
-  1. Pexels portrait stock video
+### Stage 6: Multi-Shot Timeline & Visual Matching (`nova.timeline`, `nova.visuals`, `nova.shot_planner`)
+- Divides narration into dynamic 1.5s–3.0s visual beats (max 4.0s).
+- Searches Pexels, Pixabay, Wikimedia Commons, NASA, Openverse in parallel.
+- Evaluates candidates with `open_clip` semantic similarity; unloads model from memory immediately after ranking.
+- Normalizes each shot into an isolated 30 fps CFR `yuv420p` MP4 with Ken Burns motion or ping-pong loops.
+
+### Stage 7: Cinematic Motion Design Engine (`nova.motion`)
+- Constructs motion plan (`MotionPlanBuilder`) from sentence intents and Whisper word timings.
+- Renders supersampled easing overlays:
+  - Kinetic key-term pop on high-energy terms.
+  - Animated count-up counters on numerical claims (e.g., "$130 Million").
+  - Lower-third source attribution tag during opening seconds.
+  - Progress bar tracking along the bottom safe zone.
+  - MIT open-license RGBA icons (`assets/icons/`).
+- Pipes raw RGBA frames directly into an isolated transparent QuickTime stream (`.mov`).
+
+### Stage 8: Audio Mixing & Mastering (`nova.music`, `nova.sfx`)
+- Masters narration, mood music, and procedural CC0 sound effects (`assets/sfx/whoosh.wav`, `impact.wav`, etc.).
+- Applies dynamic ducking (12% level during speech).
+- Masters master audio with two-pass EBU R128 loudnorm targeting **-14 LUFS** and **-1.5 dBTP**.
+
+### Stage 9: Video Assembly & Color Grading (`nova.renderer`)
+- Assembles normalized shot MP4s using FFmpeg concat demuxer (`-f concat -safe 0`).
+- Composites transparent caption stream and motion design stream in a single overlay pass.
+- Applies broadcast color grading (`eq=contrast=1.06:brightness=0.01:saturation=1.08,unsharp=3:3:0.4,vignette=PI/5`).
+- Strictly encodes to standard broadcast `yuv420p` (`tv` color range) with faststart web streaming.
+
+### Stage 10: Thumbnail Generation (`nova.thumbnail`)
+- Generates high-impact 1080x1920 thumbnail with high-contrast typography and theme palette styling.
+
+### Stage 11: Database Persistence (`nova.pipeline`)
+- Persists video metadata, including `tier`, `requires_manual_approval`, `monetization_risk`, `as_of_date`, and `approval_checklist_json`.
+
+### Stage 12: 14-Point Quality Gate (`nova.quality`)
+- Hardened validation: duration sync <= 0.1s, 0 decode errors, blackdetect < 0.3s, freezedetect < 1.0s, fallback cards < 10%.
+
+### Stage 13: 25-Point Empirical Scorecard Audit (`nova.audit`)
+- Comprehensive audit of audio loudness, true peak, dead silence, WER intelligibility, subtitle drift, cadence, and compliance.
+- Generates HTML scorecard report (`output/audit_<id>.html`) and JSON summary.
+
+### Stage 14: Review Dispatch & Tier B Guard (`nova.pipeline`)
+- Dispatches video to review queue.
+- If video is Tier B or requires manual approval, auto-publishing is strictly blocked until human checklist sign-off.
   2. Pixabay portrait stock video
   3. NASA Image & Video Library (Keyless, public domain)
   4. Wikimedia Commons API (Keyless, Creative Commons CC0/CC-BY)
@@ -154,9 +180,13 @@ To guarantee that the **8 GB unified memory limit of the Apple M2** is strictly 
 - Automatically ducks background music to 12% volume during speech.
 - Inserts synthesized whoosh and impact sound effects on scene transitions.
 
-### Stage 8: Hardware-Accelerated Video Assembly (`nova.renderer`)
-- Assembles scene clips using FFmpeg filter complex concat with `setsar=1` to guarantee 1:1 pixel aspect ratio and seamless PTS synchronization.
-- Encodes output at 1080x1920 30fps using Apple Silicon `h264_videotoolbox` hardware acceleration.
+### Stage 8: Segment-Based Video Assembly & CFR Normalization (`nova.renderer`, `nova.timeline`)
+- **Gapless Timeline Planning (`nova.timeline.TimelineBuilder`)**: Builds a continuous timeline from Whisper word/sentence boundaries covering $0 \rightarrow \text{audio\_duration}$ with 2.0s–3.8s shot pacing (maximum 4.5s per shot). Multiple relevant assets are distributed across sentences so no sentence is left static.
+- **Shot Normalization (`nova.visuals.fit_video_shot`, `fit_image_shot`)**: Normalizes each shot independently to 1080x1920, 30fps CFR (`format=yuv420p`), with exact frame count $N = \text{round}(\text{fps} \times \text{duration})$.
+  - Short videos are looped forward/reverse (ping-pong) to maintain smooth motion.
+  - Still images receive Ken Burns dynamic motion (slow zoom in/out, pan).
+- **Single-Pass RGBA Transparent Caption Stream (`nova.captions.create_caption_stream`)**: Renders active-word karaoke subtitles as a single continuous transparent RGBA video stream (`png` codec in `.mov`), replacing hundreds of individual PNG overlay inputs with a single `overlay=0:0` pass.
+- **Concat Demuxer Assembly (`nova.renderer.assemble_video`)**: Concatenates normalized shot MP4s using FFmpeg's low-overhead concat demuxer (`-f concat -safe 0`). Blends voice and ducked music with exact audio-video duration sync (`apad=whole_dur` and `-t`), producing streaming-ready MP4s with `-movflags +faststart`.
 
 ### Stage 9: Thumbnail Generation (`nova.thumbnails`)
 - Extracts a high-action frame and applies a high-contrast title banner and channel branding.
@@ -168,17 +198,23 @@ To guarantee that the **8 GB unified memory limit of the Apple M2** is strictly 
 - Automatically handles Daylight Saving Time (EDT vs EST) via `zoneinfo`.
 - Converts to India Standard Time (`Asia/Kolkata`, +05:30) and stores in `Video` model.
 
-### Stage 11: Quality Gate & Contact Sheet (`nova.quality`)
-- Runs 8-point audit:
-  1. Duration (20s–40s)
-  2. Narration pace (150–200 WPM)
-  3. Hook word count (<=12 words)
-  4. Fact grounding citations
-  5. Visual scene query diversity
-  6. Flat frame spatial variance check (`spatial_std < 3.5` flagged as flat)
-  7. Media license attribution completeness
-  8. **Business Financial Advice & Banned Phrase Compliance**
-- Extracts 9 equidistant frames across the video and saves an inspection contact sheet (`output/contact_sheet_<id>.jpg`).
+### Stage 11: Rebuilt 14-Point Quality Gate & Dense Frame Inspection (`nova.quality`)
+- Runs comprehensive 14-point verification with hard failure modes:
+  1. **Duration Integrity**: Video duration == Audio duration ($\le 0.1\text{s}$), frame count == $\text{round}(\text{fps} \times \text{duration})$, full decode with 0 errors.
+  2. **Black & Freeze Guard**: `blackdetect` fails on any black $> 0.3\text{s}$; `freezedetect` fails on any freeze $> 1.0\text{s}$.
+  3. **Content Coverage**: Samples every 0.5s. Detects dominant colors and spatial variance. Fails if any 1.5s window is mostly empty or if cards exceed 10%.
+  4. **Timeline Perceptual Match**: Mid-shot frames matched against 9:16 center-cropped planned assets using perceptual dhash ($\le 0.45$).
+  5. **Shot Cadence**: Fails if longest shot $> 4.5\text{s}$.
+  6. **Visual Fallback Ratio**: Enforces $\le 10\%$ procedural fallback cards from timeline metadata.
+  7. **Subtitle Karaoke Highlight**: Detects active-word yellow highlight pixels in speech safe zones.
+  8. **Independent Whisper Forced Alignment Drift**: Runs fresh `faster-whisper` pass on rendered MP4 audio (Median drift $\le 80\text{ms}$, P95 $\le 250\text{ms}$).
+  9. **Pacing**: 150–200 WPM.
+  10. **Hook Word Count**: $\le 12$ words.
+  11. **Fact Grounding Citations**: $\ge 1$ verified fact.
+  12. **Original Script**: Verifies no fallback templates used.
+  13. **Duration Bounds**: 20s–40s total runtime.
+  14. **Business Financial Advice & Banned Phrase Compliance**: Zero financial advice and mandatory disclaimer.
+- Extracts dense frames every 0.5s into a high-density contact sheet (`output/dense_contact_sheet_<id>.jpg`).
 
 ### Stage 12: Dispatch & Local Publish Queue (`nova.publish_queue`)
 - If `publish_mode: review` (default), marks video `pending_review` for Web UI inspection.

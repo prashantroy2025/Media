@@ -1,0 +1,87 @@
+# Topic Policy Configuration for Nova Autopilot v8.0 Sensitive News Mode
+version: "8.0"
+
+sensitive_news:
+  enabled: true
+  max_share: 0.35  # Maximum 35% of videos over rolling 14 days
+  max_age_hours: 48  # Topics must be <= 48 hours old when selected
+  reverify_window_hours: 6  # Must re-verify sources within 6 hours before publishing
+
+tiers:
+  tier_a:
+    name: "Normal Content"
+    description: "Science, technology, business mechanisms, evergreen facts, and routine regulatory or economic announcements."
+    allowed: true
+    requires_manual_approval: false
+
+  tier_b:
+    name: "Sensitive News Mode"
+    description: "Legal and regulatory actions (SEC/DOJ charges, lawsuits, settlements), corporate scandals, politics/trade policy, public controversies."
+    allowed: true
+    requires_manual_approval: true
+    mandatory_disclaimer: "This video summarizes reporting from the sources listed. Allegations are unproven unless a court finds otherwise."
+
+  tier_c:
+    name: "Strictly Prohibited"
+    description: "Private individuals, minors, victims/witnesses, graphic violence/sexual details, election advocacy, rumors, advice, or hate/doxxing."
+    allowed: false
+
+sources:
+  primary_domains:
+    - "sec.gov"
+    - "justice.gov"
+    - "supremecourt.gov"
+    - "courts.gov"
+    - "federalreserve.gov"
+    - "whitehouse.gov"
+    - "gov.uk"
+    - "europa.eu"
+    - "nasa.gov"
+    - "esa.int"
+    - "cftc.gov"
+    - "ftc.gov"
+  reputable_secondary_domains:
+    - "reuters.com"
+    - "apnews.com"
+    - "bloomberg.com"
+    - "ft.com"
+    - "wsj.com"
+    - "bbc.com"
+    - "bbc.co.uk"
+    - "cnbc.com"
+    - "theguardian.com"
+    - "nytimes.com"
+    - "washingtonpost.com"
+    - "nature.com"
+    - "science.org"
+    - "arxiv.org"
+
+neutrality:
+  max_allowed_score: 1.0  # Scale 0 (purely neutral) to 5 (highly loaded/partisan)
+  loaded_words:
+    - "evil"
+    - "disgraceful"
+    - "crooked"
+    - "criminal"
+    - "scumbag"
+    - "traitor"
+    - "villain"
+    - "corrupt"
+    - "disaster"
+    - "disastrous"
+    - "shameful"
+    - "heroic"
+    - "saintly"
+    - "destroying"
+    - "idiot"
+    - "fraudster"
+    - "guilty as charged"
+  advocacy_phrases:
+    - "vote for"
+    - "vote against"
+    - "cast your ballot"
+    - "donate now"
+    - "boycott"
+    - "defeat at the polls"
+    - "sign the petition"
+    - "elect"

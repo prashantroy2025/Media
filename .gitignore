@@ -1,44 +1,59 @@
-# Python
+# Python environments
+.venv/
+venv/
+env/
+
+# Python cache
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
-env/
-venv/
-ENV/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
-# Database and state
-data/*.db
-data/*.sqlite3
-data/tokens/
-data/logs/
-
-# Credentials & secrets
+# Secrets and credentials
 .env
+.env.*
+!.env.example
 credentials/
 *.pem
 *.key
 
-# Media outputs and caches
+# Data and generated files
+data/
 output/
-assets/cache/
-assets/music/*.mp3
-assets/music/*.wav
-!assets/music/README.md
-!assets/music/.gitkeep
-assets/fonts/*.ttf
-assets/fonts/*.otf
-!assets/fonts/README.md
-!assets/fonts/.gitkeep
+backups/
+*.csv
+*.parquet
+*.sqlite
+*.sqlite3
+*.db
 
-# macOS
+# Generated folders
+qc_dense_None/
+sync_frames_None/
+
+# Logs
+*.log
+logs/
+
+# OS files
 .DS_Store
-.AppleDouble
-.LSOverride
+Thumbs.db
 
-# Editor directories
-.vscode/
+# IDE
 .idea/
-*.swp
+.vscode/
+
+# Build and temporary files
+build/
+dist/
+.cache/
+.tmp/
+temp/
+tmp/
+coverage/
+
+# Generated asset cache
+assets/cache/
+gemini_usage.json
+

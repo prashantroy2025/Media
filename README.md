@@ -1,46 +1,64 @@
-# Nova Autopilot v5.0 🚀
+# Nova Autopilot v8.0 🚀
 
-> **Local-First Autonomous AI Short-Video Studio & Auto-Publisher**  
-> Tailored for **Prashant Roy** (`@NovaPrashantroy` / **PRASHANT ROY**) for generating high-energy **English Fact & Shock-News Shorts** targeting a **high-value English-speaking audience (US, UK, CA, AU)** for **YouTube Shorts** and **Instagram Reels**.
+> **Local-First Autonomous AI Short-Video Studio, Cinematic Motion Engine & Auto-Publisher**  
+> Tailored for **Prashant Roy** (`@NovaPrashantroy` / **PRASHANT ROY**) for generating high-energy, premium **English Fact & Shock-News Shorts** targeting a **high-value English-speaking audience (US, UK, CA, AU)** for **YouTube Shorts** and **Instagram Reels**.
 
 ---
 
-## 🌟 Overview: What's New in v4.0 & v5.0
+## 🌟 Overview: What's New in v7.0 & v8.0
 
-**Nova Autopilot v5.0** eliminates the four core defects of previous iterations while adding safe top-creator pattern learning, sentence-level semantic visual matching, and millisecond-accurate forced alignment:
+**Nova Autopilot v8.0** elevates video production from standard template concatenation to **cinematic motion design, empirical scorecard verification, and a robust Three-Tier sensitive news policy**:
 
-1. **Forced Alignment Subtitle Synchronization (`nova.alignment`)**:
-   - Runs `faster-whisper` (`tiny`, CPU int8) directly on the **final trimmed master voice audio**.
-   - Aligns Whisper timestamps to script tokens via `difflib.SequenceMatcher`, preserving script spelling, capitalization, and punctuation.
-   - Sync Quality Gate enforces **Median Drift $\le 100$ ms** and **Max Drift $\le 250$ ms** (Measured in production: **0.0 ms**).
-   - Word highlight frames synchronized within 80ms of vocalization.
-2. **Provider Gating & Semantic Visual Relevance (`nova.visuals`, `nova.relevance`)**:
-   - **NASA Gating**: NASA media provider is strictly locked to `space_science` niche with confirmed space entities, eliminating random cosmic clips on business/tech stories.
-   - **Multi-Candidate Search**: Queries Pexels, Pixabay, Wikimedia Commons, and Openverse in parallel.
-   - **`VisualRelevanceScorer`**: Calibrated threshold ($\ge 40.0/100$) evaluating subject match (40%), search query match (35%), action match (15%), and motion bonus (10%).
-   - **Dynamic Kinetic Explainer Cards**: Procedural typography cards with tech grid and Ken Burns motion if no stock candidate passes relevance threshold.
-   - Generates interactive `alignment_report.html` for visual verification.
-3. **Advanced Coherent Scriptwriter (`nova.scriptwriter`)**:
-   - **Single Source of Truth**: Unified ordered sentence contracts (`sentences[]`). Sentence 0 is the hook; pipeline speaks and captions each sentence once, eliminating duplicated openings.
-   - **Duplicate Sentence Guard**: Rejects token Jaccard $\ge 0.80$ and identical opening 6 words.
-   - **Fact Fidelity (`verify_fact_fidelity`)**: Asserts preservation of subject, action stems/synonyms, and causal outcome (solving the "apple fell and spoiled" loose paraphrasing problem).
-   - **Adjacent-Pair Coherence Critic**: Scores logical progression between sentence pairs ($\ge 3.0/5.0$).
-   - **Golden Evaluation Harness**: `python -m nova eval-scripts` validates 12 fixed topics (100% fact retention, 4.6/5.0 coherence).
-4. **Safe Top-Creator Pattern Learning (`nova.patterns`)**:
-   - **Reference Channel Tracker**: Cheap official YouTube Data API caller tracking top creators (`@TwoMinutePapers`, `@Fireship`, `@CompanyMan`, `@Veritasium`), calculating outlier scores ($O = \text{views} / \text{median\_views}$), and filtering Shorts ($\le 180$s).
-   - **Pattern Library**: Structural templates enforcing the **mandatory $\le 4$-word consecutive overlap rule**.
-   - **Study Notes Page (`/study-notes`)**: Review UI interface with strict regex copy-guard rejecting raw transcripts, timestamps (`00:15`), and caption tags (`[Music]`).
-   - **"Same Topic, Different Angle"**: Generates 7 distinct angles with distinctiveness scoring and an 8-gram verbatim overlap originality guard.
-5. **Interactive Review Studio Enhancements**:
-   - Sentence-by-sentence beat map showing role badges, fact IDs, and assigned visual provider/relevance scores.
-   - Forced alignment sync drift metrics card.
-   - Inline "Fix Sentence" editor and "Regenerate Script Only" buttons.
-   - Dedicated Study Notes page with copy-guard warnings.
-6. **Premium-Audience Niche Mix**:
-   - **50% AI & Technology** (`ai_tech`), **25% Business & Economics** (`business`), **25% Space & Science** (`space_science`).
-   - Deficit-based scheduler with anti-streak guardrail (max 2 consecutive).
-   - Dual-unit measurement engine (`60 miles (96.56 km)`).
-   - Strict business compliance & mandatory regulatory disclaimer.
+1. **Empirical 25-Point Audit Scorecard (`nova.audit`)**:
+   - Automated quality scorecard CLI: `python -m nova audit-video <video_id>` and `python -m nova audit-system`.
+   - Generates interactive self-contained HTML reports (`output/audit_<id>.html`) and machine-readable JSON summaries.
+   - Enforces strict empirical pass thresholds:
+     - **Scorecard Pass Rate**: $\ge 90.0\%$
+     - **Loudness**: $-14.0 \pm 2.0$ LUFS (EBU R128) & True Peak $< -1.0$ dBTP
+     - **Dead Silence**: $\le 0.40$s inside vocal track
+     - **Speech Pace**: $160 \text{--} 185$ WPM
+     - **Intelligibility (WER)**: $\le 3.0\%$ via independent faster-whisper audit
+     - **Subtitle Drift**: Median $\le 60$ ms, Max $\le 250$ ms
+     - **Visual Integrity**: $0$ black frames, $0$ freeze stretches, $< 10.0\%$ fallback cards
+     - **Visual Cut Cadence**: Median $1.8 \text{--} 2.8$s, Max $\le 4.0$s
+     - **Semantic Relevance**: $\ge 90.0\%$ above threshold
+     - **Compliance**: $100\%$ licensed assets with attribution records
+
+2. **Cinematic Motion Design Engine (`nova.motion`)**:
+   - **Supersampled Easing Overlays**: 2x supersampled Pillow rendering with quadratic, cubic, spring overshoot, and exponential easing curves.
+   - **Kinetic Key-Term Pop**: Key phrases dynamically pop into view synchronized to Whisper word timestamps with color accenting.
+   - **Animated Counters**: Numerical figures (e.g., "$130 Million", "40,000 units") animate smoothly with rolling count-ups.
+   - **Lower-Third Source Tag**: Sleek glassmorphic credential tag in opening seconds displaying source verification badge.
+   - **Video Progress Bar**: Unobtrusive progress indicator animating along the bottom safe zone.
+   - **Open-License Icons & Procedural SFX**: 11 MIT open-license icons (`assets/icons/`) and 4 synthesized CC0 sound effects (`assets/sfx/whoosh.wav`, `impact.wav`, `riser.wav`, `pop.wav`).
+   - **Transparent QuickTime Stream**: Overlays rendered to an isolated RGBA stream (`.mov`) and composited in a single FFmpeg pass.
+
+3. **Frame 0 Hook Architecture & Broadcast Color Grading (`nova.renderer`)**:
+   - **Instant Visual Engagement**: Frame 0 displays an animated hook card with theme-matched color styling, transitioning within 0.3s.
+   - **Color Grading**: Broadcast-calibrated filter complex (`eq=contrast=1.06:brightness=0.01:saturation=1.08,unsharp=3:3:0.4,vignette=PI/5`).
+   - **Broadcast Standard Encoding**: Strictly enforces standard `yuv420p` (`tv` color range) with H.264 High Profile and Web Faststart (`+faststart`).
+
+4. **Sound Design & Mastering (`nova.music`, `nova.sfx`)**:
+   - **EBU R128 Broadcast Normalization**: Two-pass FFmpeg `loudnorm` mastering targeting $-14$ LUFS and $-1.5$ dBTP.
+   - **Dynamic Voice Ducking**: Background music automatically ducks to 12% during narration and recovers during pauses.
+
+5. **Sensitive News Mode & Three-Tier Topic Policy (`nova.topic_safety`)**:
+   - Configured via `config/topic_policy.yaml`:
+     - **Tier A (Normal)**: Standard evergreen, scientific, and mainstream tech news.
+     - **Tier B (Sensitive News Allowed)**: Regulatory actions, corporate legal controversies, and policy shifts. Strictly requires 1 primary source (e.g., `.gov`, `.gov.uk`, SEC EDGAR) or 2 independent reputable outlets. Enforces neutral tone, non-sensational titles, "as of [Date]" freshness anchors, and mandatory human review sign-off.
+     - **Tier C (Prohibited)**: Sensational scandals, unverified criminal rumors, and partisan political advocacy strictly blocked.
+   - **Dispatch Auto-Publish Guard**: Pipeline enforces hard blocking on Tier B topics, locking them in the Review Queue until manually signed off.
+
+6. **Review Studio Enhancements (`nova.review_ui`)**:
+   - **Scorecard Badges**: Color-coded pass/fail scorecard indicators on dashboard and review cards.
+   - **Direct Audit Viewer**: Standalone `/audit/{video_id}` endpoint rendering interactive 25-point audit scorecards.
+   - **Interactive Compliance Checklist**: 5-point manual sign-off modal for Tier B videos (`/api/videos/{id}/checklist`).
+   - **Shot Swapper**: Instant asset replacement per shot (`/api/videos/{id}/swap-shot`).
+   - **Topic Policy Manager**: Built-in visual configuration editor at `/policy`.
+
+7. **Voice Evaluation Benchmark & Pronunciation Engine (`nova.voice_eval`, `nova.utils.normalizer`)**:
+   - Benchmark suite generating side-by-side voice comparisons (`output/voice_samples/` & `voice_comparison.html`).
+   - Rule-based text normalizer with phonetic expansion and pronunciation override dictionary (`config/pronunciations.yaml`).
 
 ---
 
@@ -102,6 +120,16 @@ python -m nova niches
 # Reset learned weights back to config.yaml defaults
 python -m nova niches --reset
 
+# Safe "Fresh Start" / Reset (wipe generated data, keep setup & credentials)
+python -m nova reset --list          # Dry run: audit tables, rows, and files without touching anything
+python -m nova reset                 # Interactive reset: prompts for confirmation phrase 'DELETE GENERATED DATA'
+python -m nova reset --yes           # Non-interactive reset (bypasses prompt)
+python -m nova reset --cache         # Also clear stock media download cache in assets/cache/
+python -m nova reset --logs          # Also clear runtime log files in data/logs/
+python -m nova reset --keep-learning # Purge videos/scripts/topics but preserve learned hook/niche statistics
+python -m nova reset --only-demo     # Clean demo records and orphaned files only
+python -m nova fresh-start           # Friendly alias for 'python -m nova reset'
+
 # Process due videos in local publish queue (Instagram / launchd)
 python -m nova process-queue
 
@@ -120,6 +148,18 @@ python -m nova publish --video-id 25  # Manually publish an approved video
 
 # Evaluate scriptwriter fact grounding & coherence on golden topics
 python -m nova eval-scripts
+
+# Run 25-point empirical scorecard audit on a specific video
+python -m nova audit-video 114
+
+# Run system-wide scorecard audit across all rendered videos
+python -m nova audit-system
+
+# Run 3-voice TTS benchmark & generate voice_comparison.html
+python -m nova voice-eval
+
+# Run full regression evaluation suite (100+ tests)
+python -m nova eval-all
 
 # Track reference channels for viral outliers via official YouTube API
 python -m nova track-references
@@ -175,6 +215,31 @@ To automate background publishing while your Mac is in sleep mode:
    ```bash
    bash scripts/remove_pmset_wake.sh
    ```
+
+---
+
+## 🔄 Safe Fresh-Start & System Reset (`reset` / `fresh-start`)
+
+Nova Autopilot provides a dedicated, safety-hardened reset facility (`python -m nova reset` or `python -m nova fresh-start`) to cleanly wipe generated experiment data (topics, scripts, videos, queue slots, output files) while guaranteeing that your setup, API keys, credentials, and configurations survive.
+
+### Safety Guarantees
+1. **Verified SQLite Online Backup**: A consistent, live database snapshot is created using `sqlite3.Connection.backup()` into `data/backups/nova_<timestamp>.db` before any destructive action is taken.
+2. **Mac Trash Recovery**: Generated files in `output/` are moved to the macOS Trash (`~/.Trash` / `send2trash`) so files can be recovered if needed. Files are never permanently deleted unless `--permanent` is explicitly passed.
+3. **Strict Path Validation**: All target paths are strictly validated to prevent deleting any file outside the project, or dangerous directories (`/`, `~`, `~/Desktop`, parent directory).
+4. **Active Process Locks**: Refuses to run if the Review Studio Web UI is listening on port 8765 or a pipeline PID lock (`data/pipeline.lock`) is active.
+5. **Interactive Confirmation**: Prompts you to type `DELETE GENERATED DATA` before proceeding unless bypassed with `--yes`.
+6. **Autoincrement Reset**: Clears `sqlite_sequence` for generated tables so your first fresh production video begins at ID #1.
+
+### Reset Options
+| Flag | Description |
+|---|---|
+| `--list` | **Dry run (default)**: Lists all tables, row counts, and files that would be cleared without modifying anything. |
+| `--yes`, `-y` | Executes the reset without requiring manual confirmation typing. |
+| `--cache` | Optional: Clears the stock media download cache (`assets/cache/`). |
+| `--logs` | Optional: Clears rotating execution logs (`data/logs/`). |
+| `--keep-learning` | Preserves creator pattern statistics and learned hook scores. |
+| `--only-demo` | Clears only demo records (`is_demo=1`) and orphaned video files. |
+| `--permanent` | Bypasses macOS Trash and uses permanent filesystem deletion. |
 
 ---
 

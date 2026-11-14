@@ -296,7 +296,7 @@ video:
     font_name: "Montserrat-ExtraBold"
     font_file: "assets/fonts/Montserrat-ExtraBold.ttf"
     words_per_group: 3
-    safe_margin_y: 1150 # Centered lower-middle safe zone (avoids bottom 20% & right edge)
+    safe_margin_y: 1380 # Fixed lower band (y=1280-1560, avoids bottom 20% UI & card overlap)
     primary_color: "&H00FFFFFF" # White
     highlight_color: "&H0000FFFF" # Vivid Yellow
     outline_color: "&H00000000" # Black outline
@@ -310,6 +310,9 @@ music:
 
 visuals:
   image_gen_enabled: false
+  min_match_score: 60.0 # Strict relevance gate threshold (0-100)
+  illustrative_badge: true # Burn-in 'ILLUSTRATIVE FOOTAGE' badge when generic stock used on specific events
+  max_ken_burns_zoom: 1.15 # Never zoom beyond 1.15 to avoid clipping text/edges
   providers_order:
     - "pexels_video"
     - "pixabay_video"
@@ -319,3 +322,18 @@ visuals:
     - "stock_photo_kenburns"
   ken_burns_zoom_speed: 1.05
   flat_frame_threshold: 0.05 # Max 5% flat frames allowed in visual quality gate
+
+animation:
+  enabled: true # Enable procedural motion graphics (counters, charts, timelines, maps)
+  intensity: "low" # 'low', 'medium', 'high'
+  fps: 30
+
+gemini:
+  enabled: true
+  text_model: "gemini-3.8-flash"
+  image_model: "gemini-3.1-flash-image"
+  veo_enabled: false
+  max_images_per_video: 4
+  max_veo_seconds_per_video: 8
+  daily_budget: 5.0
+  timeout_seconds: 30

@@ -26,7 +26,7 @@ def test_keyless_visual_generation(tmp_path):
     assert asset is not None
     assert dest_mp4.exists()
     assert dest_mp4.stat().st_size > 10000
-    assert asset.provider in ["nasa_media", "wikimedia_commons", "openverse", "designed_card"]
+    assert asset.provider in ["nasa_media", "wikimedia", "wikimedia_commons", "openverse", "designed_card"]
 
 
 def test_last_resort_designed_card_fallback(tmp_path):
@@ -94,8 +94,45 @@ def test_visual_query_validation_and_cleaning():
     assert any("neutron star" in q for q in space_cands)
     assert not any(is_valid_visual_query(q) is False for q in space_cands)
 
-    tech_cands = generate_concrete_queries("Blackwell chip features 208 billion transistors", "microchip", niche="ai_tech")
+    tech_cands = generate_concrete_queries(
+        "Blackwell chip features 208 billion transistors", "microchip", niche="ai_tech"
+    )
     assert len(tech_cands) == 3
     assert any("chip" in q for q in tech_cands)
     assert not any(is_valid_visual_query(q) is False for q in tech_cands)
+
+
+def test_materialize_shot_hero_video_procedural_animation(tmp_path):
+    """Verifies that when candidates fail relevance gate, procedural data animation is generated instead of flat cards."""
+    settings = load_config()
+    vm = VisualsManager(settings)
+
+    from nova.timeline import ShotPlan
+
+    shot = ShotPlan(
+        shot_index=0,
+        sentence_index=0,
+        sentence_id="S1",
+        sentence_text="TSMC manufactures Nvidia Blackwell microchips in cleanrooms.",
+        start_time=0.0,
+        end_time=2.0,
+        duration=2.0,
+        query="tsmc cleanroom microchip",
+    )
+
+    dest_shot = tmp_path / "shot_0.mp4"
+    # Pass an empty candidate pool (or irrelevant candidates)
+    asset = vm.materialize_shot(
+        shot=shot,
+        dest_shot_path=dest_shot,
+        candidate_pool=[],
+        used_asset_ids=set(),
+    )
+
+    assert asset is not None
+    assert dest_shot.exists()
+    assert dest_shot.stat().st_size > 1000
+    assert asset.provider == "procedural_motion"
+    assert asset.is_fallback_card is False
+    assert shot.relevance_score >= 90.0
 

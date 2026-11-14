@@ -1,0 +1,44 @@
+# Pronunciation Dictionary for Nova Autopilot v8.0 Speech Synthesis & Caption Alignment
+version: "8.0"
+
+terms:
+  # Tech Entities & Hardware
+  "NVIDIA": "en-VID-ee-uh"
+  "Nvidia": "en-VID-ee-uh"
+  "TSMC": "T-S-M-C"
+  "ASIC": "AY-sik"
+  "ASICs": "AY-siks"
+  "DeepSeek": "Deep Seek"
+  "arXiv": "ar-kive"
+  "EDGAR": "ED-gar"
+  "PyTorch": "Pie Torch"
+  "LLM": "L-L-M"
+  "LLMs": "L-L-Ms"
+  "GPU": "G-P-U"
+  "GPUs": "G-P-Us"
+  "CPU": "C-P-U"
+  "CPUs": "C-P-Us"
+  "TPU": "T-P-U"
+  "TPUs": "T-P-Us"
+  "mRNA": "m-R-N-A"
+  "CRISPR": "crisper"
+  "NASA": "NAS-uh"
+  "ESA": "E-S-A"
+  "SEC": "S-E-C"
+  "DOJ": "D-O-J"
+  "FTC": "F-T-C"
+  "FDA": "F-D-A"
+
+  # Model Versions
+  "GPT-4": "G-P-T four"
+  "GPT-4o": "G-P-T four oh"
+  "Claude 3.5": "Claude three point five"
+  "Llama 3": "Llama three"
+  "Llama 3.2": "Llama three point two"
+
+  # Finance & Markets
+  "EBITDA": "ee-bit-dah"
+  "P/E": "P-to-E ratio"
+  "IPO": "I-P-O"
+  "S&P": "S and P"
+  "Fed": "the Federal Reserve"

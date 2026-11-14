@@ -2,6 +2,7 @@
 Ensures graceful degradation without unhandled exceptions.
 """
 
+from pathlib import Path
 from unittest.mock import patch
 
 from nova.collectors.base import BaseCollector
@@ -111,6 +112,7 @@ def test_failure_missing_credentials():
 
     # Should report error gracefully in PublishResult rather than crashing
     yt_pub = YouTubePublisher(settings)
+    yt_pub.alt_token_path = Path("non_existent_alt.json")
     video = Video(id=999, video_path="fake.mp4")
     script = Script(title="T", description="D", hashtags="#T")
     res = yt_pub.publish(video, script)

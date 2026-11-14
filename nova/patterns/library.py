@@ -13,12 +13,15 @@ from nova.db import DatabaseManager, FormatStats, HookPattern, ReferenceVideo, S
 from nova.logging_setup import logger
 
 
-def check_word_overlap(pattern_text: str, reference_titles: list[str], max_consecutive_words: int = 4) -> tuple[bool, str]:
+def check_word_overlap(
+    pattern_text: str, reference_titles: list[str], max_consecutive_words: int = 4
+) -> tuple[bool, str]:
     """Validates that pattern text does not contain more than max_consecutive_words (default 4)
 
     consecutive words from any reference title.
     Returns (True, "") if compliant, (False, offending_ngram) if violated.
     """
+
     def tokenize(text: str) -> list[str]:
         # Lowercase and strip punctuation
         clean = re.sub(r"[^\w\s]", "", text.lower())
@@ -92,25 +95,79 @@ class PatternLibrary:
                 default_structures = [
                     StructureTemplate(
                         name="high_tension_escalation",
-                        beats_json=json.dumps([
-                            {"beat_id": "B1", "role": "hook", "purpose": "Stop scroll with shocking metric", "bridge_to_next": "cause->effect"},
-                            {"beat_id": "B2", "role": "context", "purpose": "Anchor timeline and baseline state", "bridge_to_next": "escalation"},
-                            {"beat_id": "B3", "role": "escalation", "purpose": "Reveal the unexpected mechanism", "bridge_to_next": "but here's the catch"},
-                            {"beat_id": "B4", "role": "payoff", "purpose": "Explicitly answer the opening hook question", "bridge_to_next": "loop-back"},
-                            {"beat_id": "B5", "role": "loop_back", "purpose": "Seamless closing loop to first line", "bridge_to_next": "none"},
-                        ]),
+                        beats_json=json.dumps(
+                            [
+                                {
+                                    "beat_id": "B1",
+                                    "role": "hook",
+                                    "purpose": "Stop scroll with shocking metric",
+                                    "bridge_to_next": "cause->effect",
+                                },
+                                {
+                                    "beat_id": "B2",
+                                    "role": "context",
+                                    "purpose": "Anchor timeline and baseline state",
+                                    "bridge_to_next": "escalation",
+                                },
+                                {
+                                    "beat_id": "B3",
+                                    "role": "escalation",
+                                    "purpose": "Reveal the unexpected mechanism",
+                                    "bridge_to_next": "but here's the catch",
+                                },
+                                {
+                                    "beat_id": "B4",
+                                    "role": "payoff",
+                                    "purpose": "Explicitly answer the opening hook question",
+                                    "bridge_to_next": "loop-back",
+                                },
+                                {
+                                    "beat_id": "B5",
+                                    "role": "loop_back",
+                                    "purpose": "Seamless closing loop to first line",
+                                    "bridge_to_next": "none",
+                                },
+                            ]
+                        ),
                         target_duration_range="25-35s",
                         target_sentence_count=5,
                     ),
                     StructureTemplate(
                         name="myth_busting_chain",
-                        beats_json=json.dumps([
-                            {"beat_id": "B1", "role": "hook", "purpose": "State the common misconception", "bridge_to_next": "contrast"},
-                            {"beat_id": "B2", "role": "twist", "purpose": "Present the newly uncovered data", "bridge_to_next": "example"},
-                            {"beat_id": "B3", "role": "escalation", "purpose": "Show the real-world consequence", "bridge_to_next": "answer-to-question"},
-                            {"beat_id": "B4", "role": "payoff", "purpose": "Provide the true principle", "bridge_to_next": "loop-back"},
-                            {"beat_id": "B5", "role": "close", "purpose": "Invite comment debate", "bridge_to_next": "none"},
-                        ]),
+                        beats_json=json.dumps(
+                            [
+                                {
+                                    "beat_id": "B1",
+                                    "role": "hook",
+                                    "purpose": "State the common misconception",
+                                    "bridge_to_next": "contrast",
+                                },
+                                {
+                                    "beat_id": "B2",
+                                    "role": "twist",
+                                    "purpose": "Present the newly uncovered data",
+                                    "bridge_to_next": "example",
+                                },
+                                {
+                                    "beat_id": "B3",
+                                    "role": "escalation",
+                                    "purpose": "Show the real-world consequence",
+                                    "bridge_to_next": "answer-to-question",
+                                },
+                                {
+                                    "beat_id": "B4",
+                                    "role": "payoff",
+                                    "purpose": "Provide the true principle",
+                                    "bridge_to_next": "loop-back",
+                                },
+                                {
+                                    "beat_id": "B5",
+                                    "role": "close",
+                                    "purpose": "Invite comment debate",
+                                    "bridge_to_next": "none",
+                                },
+                            ]
+                        ),
                         target_duration_range="20-30s",
                         target_sentence_count=4,
                     ),
@@ -141,9 +198,27 @@ class PatternLibrary:
             # Seed Format Stats
             if session.query(FormatStats).count() == 0:
                 default_stats = [
-                    FormatStats(niche="ai_tech", ideal_duration_range="25-32s", ideal_wpm=175.0, cut_frequency=2.5, hashtag_count=4),
-                    FormatStats(niche="business", ideal_duration_range="28-35s", ideal_wpm=165.0, cut_frequency=3.0, hashtag_count=4),
-                    FormatStats(niche="space_science", ideal_duration_range="22-30s", ideal_wpm=170.0, cut_frequency=2.8, hashtag_count=5),
+                    FormatStats(
+                        niche="ai_tech",
+                        ideal_duration_range="25-32s",
+                        ideal_wpm=175.0,
+                        cut_frequency=2.5,
+                        hashtag_count=4,
+                    ),
+                    FormatStats(
+                        niche="business",
+                        ideal_duration_range="28-35s",
+                        ideal_wpm=165.0,
+                        cut_frequency=3.0,
+                        hashtag_count=4,
+                    ),
+                    FormatStats(
+                        niche="space_science",
+                        ideal_duration_range="22-30s",
+                        ideal_wpm=170.0,
+                        cut_frequency=2.8,
+                        hashtag_count=5,
+                    ),
                 ]
                 session.add_all(default_stats)
 

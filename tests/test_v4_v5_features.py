@@ -24,6 +24,7 @@ from nova.scriptwriter import (
 # 1. Duplicate Sentence Guard
 # ---------------------------------------------------------------------------
 
+
 def test_duplicate_sentence_guard_exact():
     sentences = [
         "A single teaspoon of a neutron star weighs six billion tons.",
@@ -73,6 +74,7 @@ def test_duplicate_sentence_guard_passes_distinct():
 # 2. Fact Fidelity (Subject, Action, Outcome)
 # ---------------------------------------------------------------------------
 
+
 def test_fact_fidelity_canonical_apple_case():
     fact = StructuredFact(
         id="F1",
@@ -110,6 +112,7 @@ def test_fact_fidelity_canonical_apple_case():
 # 3. Pattern Library Word Overlap Rule (<= 4 Consecutive Words)
 # ---------------------------------------------------------------------------
 
+
 def test_pattern_library_overlap_guard():
     reference_titles = [
         "How NVIDIA Built A Trillion Dollar Monopoly In Secret",
@@ -132,6 +135,7 @@ def test_pattern_library_overlap_guard():
 # ---------------------------------------------------------------------------
 # 4. Study Notes Copy Guard (Transcript Artifact Detection)
 # ---------------------------------------------------------------------------
+
 
 def test_study_notes_copy_guard_detects_caption_tags():
     raw_caption = "Today we look at something wild [Music] and then the results came in [Applause]."
@@ -165,6 +169,7 @@ def test_study_notes_copy_guard_accepts_genuine_notes():
 # ---------------------------------------------------------------------------
 # 5. Visual Relevance Scorer & NASA Gating
 # ---------------------------------------------------------------------------
+
 
 def test_visual_relevance_scorer_and_nasa_gating():
     scorer = VisualRelevanceScorer()
@@ -228,6 +233,7 @@ def test_visual_relevance_scorer_and_nasa_gating():
 # 6. Forced Alignment Token Matching & Drift Logic
 # ---------------------------------------------------------------------------
 
+
 def test_forced_alignment_token_normalizer():
     assert _normalize_token("Hello,") == "hello"
     assert _normalize_token("10x!!") == "10x"
@@ -251,9 +257,7 @@ def test_forced_aligner_mock_alignment():
         instance = MockWhisper.return_value
         fake_seg = MagicMock()
         fake_seg.text = "Why did NVIDIA change everything"
-        fake_seg.words = [
-            MagicMock(word=w["word"], start=w["start"], end=w["end"]) for w in fake_whisper_words
-        ]
+        fake_seg.words = [MagicMock(word=w["word"], start=w["start"], end=w["end"]) for w in fake_whisper_words]
         fake_info = MagicMock(duration=2.0)
         instance.transcribe.return_value = ([fake_seg], fake_info)
 

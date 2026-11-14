@@ -54,10 +54,19 @@
     <div>
         <div class="card" style="padding: 1rem; text-align: center;">
             <div style="width: 100%; aspect-ratio: 9/16; background: #000; border-radius: 8px; overflow: hidden; position: relative;">
+                {% if selected_video.video_path | file_exists %}
                 <video controls autoplay loop playsinline style="width: 100%; height: 100%; object-fit: contain;">
-                    <source src="/media/{{ selected_video.video_path }}" type="video/mp4">
+                    <source src="/media/{{ selected_video.video_path | rel_path }}" type="video/mp4">
                     Your browser does not support the video tag.
                 </video>
+                {% else %}
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 1.5rem; text-align: center; color: var(--text-muted); background: #0d1117;">
+                    <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">⚠️</div>
+                    <div style="font-weight: 700; color: #f85149; margin-bottom: 0.5rem;">Media File Missing on Disk</div>
+                    <div style="font-size: 0.75rem; word-break: break-all; opacity: 0.7; margin-bottom: 1rem;"><code>{{ selected_video.video_path }}</code></div>
+                    <button class="btn btn-sm btn-primary" onclick="reRenderVideo({{ selected_video.id }})">🎬 Re-render Video</button>
+                </div>
+                {% endif %}
             </div>
             <div style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center;">
                 <span class="badge badge-{{ selected_video.status }}">{{ selected_video.status }}</span>
@@ -67,8 +76,8 @@
 
         {% if selected_video.contact_sheet_path %}
         <div class="card" style="padding: 1rem;">
-            <h4 style="margin-bottom: 0.75rem; font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted);">Visual Contact Sheet (1 fps)</h4>
-            <img src="/media/{{ selected_video.contact_sheet_path }}" style="width: 100%; border-radius: 6px; border: 1px solid var(--border-color);" alt="Visual contact sheet">
+            <h4 style="margin-bottom: 0.75rem; font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted);">Dense Contact Sheet (0.5s sampling)</h4>
+            <img src="/media/{{ selected_video.contact_sheet_path | rel_path }}" style="width: 100%; border-radius: 6px; border: 1px solid var(--border-color);" alt="Visual contact sheet">
         </div>
         {% endif %}
 
@@ -99,6 +108,81 @@
                 </div>
             </div>
             <span class="badge" style="background: #1f6feb; font-size: 0.85rem; padding: 0.35rem 0.75rem;">DST Auto-Aligned</span>
+        </div>
+        {% endif %}
+
+        <!-- Empirical Scorecard Suite Card -->
+        {% set sc = selected_video.get_audit_scorecard() if selected_video.get_audit_scorecard else {} %}
+        {% if sc and sc.pass_rate_pct is defined %}
+        <div class="card" style="border-left: 4px solid {% if sc.pass_rate_pct >= 90 %}#238636{% elif sc.pass_rate_pct >= 80 %}#d29922{% else %}#da3633{% endif %};">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                <h3 style="margin: 0; font-weight: 700; display: flex; align-items: center; gap: 0.75rem;">
+                    <span>v8 Empirical Scorecard (25 Points)</span>
+                    <span class="badge" style="background: {% if sc.pass_rate_pct >= 90 %}#238636{% elif sc.pass_rate_pct >= 80 %}#d29922{% else %}#da3633{% endif %}; font-size: 0.85rem; padding: 0.25rem 0.6rem;">
+                        {{ sc.pass_rate_pct }}% ({{ sc.passed_checks }}/{{ sc.total_checks }} PASS)
+                    </span>
+                </h3>
+                <a href="/audit/{{ selected_video.id }}" target="_blank" class="btn btn-sm btn-secondary">
+                    📊 View Full HTML Audit Report
+                </a>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                Target: &ge; 90.0% Pass Rate across Script/Facts, Voice, Subtitles, Visual Cadence, and Technical Compliance.
+            </div>
+            {% if sc.failed_metrics %}
+            <div style="padding: 0.6rem 0.85rem; background: rgba(218, 54, 51, 0.12); border-radius: 6px; border: 1px solid #da3633; color: #f85149; font-size: 0.8rem;">
+                <strong>Scorecard Deficiencies:</strong> {{ sc.failed_metrics|join(', ') }}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Tier B Sensitive News Mode Checklist Card -->
+        {% if selected_video.tier == 'tier_b' or selected_video.requires_manual_approval %}
+        {% set cl = selected_video.get_approval_checklist() if selected_video.get_approval_checklist else {} %}
+        {% set all_checked = cl.get('sources_verified') and cl.get('claims_attributed') and cl.get('no_guilt_stated') and cl.get('neutral_visuals') and cl.get('as_of_date_present') and cl.get('disclaimer_present') %}
+        <div class="card" style="border: 2px solid #f59e0b; background: rgba(245, 158, 11, 0.08);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.4rem;">⚠️</span>
+                    <h3 style="color: #f59e0b; font-weight: 800; margin: 0;">Tier B: Sensitive News Mode</h3>
+                </div>
+                <span class="badge" style="background: #f59e0b; color: #000; font-weight: 800;">
+                    {{ "CHECKLIST COMPLETE ✓" if all_checked else "MANDATORY SIGN-OFF REQUIRED" }}
+                </span>
+            </div>
+            <p style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 1rem;">
+                This topic involves sensitive legal, regulatory, or political allegations. Auto-publishing is blocked. You must verify and check each compliance requirement below before this video can be approved:
+            </p>
+            <form method="POST" action="/api/videos/{{ selected_video.id }}/checklist">
+                <div style="display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.85rem; margin-bottom: 1.25rem;">
+                    <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer;">
+                        <input type="checkbox" name="sources_verified" value="true" {% if cl.get('sources_verified') %}checked{% endif %} style="width: 1.1rem; height: 1.1rem;">
+                        <span>1. <strong>Primary or Reputable Sources Verified:</strong> Reporting derived from official regulatory release (e.g. SEC/DOJ) or 2+ independent reputable newsrooms.</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer;">
+                        <input type="checkbox" name="claims_attributed" value="true" {% if cl.get('claims_attributed') %}checked{% endif %} style="width: 1.1rem; height: 1.1rem;">
+                        <span>2. <strong>Neutral Attribution:</strong> All accusations use neutral attribution ("prosecutors state", "according to court filings", "the firm denies").</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer;">
+                        <input type="checkbox" name="no_guilt_stated" value="true" {% if cl.get('no_guilt_stated') %}checked{% endif %} style="width: 1.1rem; height: 1.1rem;">
+                        <span>3. <strong>Presumption of Innocence:</strong> Allegations remain unproven in court; no definitive guilt stated as fact.</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer;">
+                        <input type="checkbox" name="neutral_visuals" value="true" {% if cl.get('neutral_visuals') %}checked{% endif %} style="width: 1.1rem; height: 1.1rem;">
+                        <span>4. <strong>Neutral Visuals:</strong> Footage and graphic components are objective, not sensationalized or accusatory.</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer;">
+                        <input type="checkbox" name="as_of_date_present" value="true" {% if cl.get('as_of_date_present') %}checked{% endif %} style="width: 1.1rem; height: 1.1rem;">
+                        <span>5. <strong>"As of" Date Present:</strong> Factual state verified as of <em>{{ selected_video.as_of_date or "today" }}</em>.</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer;">
+                        <input type="checkbox" name="disclaimer_present" value="true" {% if cl.get('disclaimer_present') %}checked{% endif %} style="width: 1.1rem; height: 1.1rem;">
+                        <span>6. <strong>Mandatory Disclaimer Present:</strong> Disclaimer ("Allegations unproven unless found by a court") attached to metadata.</span>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-sm btn-secondary">💾 Save Checklist Sign-Off</button>
+            </form>
         </div>
         {% endif %}
 
@@ -165,6 +249,109 @@
                     <div style="font-weight: 700; font-size: 1.1rem;">{{ sync_stats.get('aligned_words', 0) }} words</div>
                     <div style="font-size: 0.7rem; color: var(--text-muted);">Non-linear audio mapped</div>
                 </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Master Visual Timeline Card -->
+        {% if timeline_data and timeline_data.shots %}
+        <div class="card" style="border-left: 4px solid #38bdf8;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-weight: 700;">Master Visual Timeline ({{ timeline_data.total_shots }} Shots &bull; {{ timeline_data.total_duration }}s)</h3>
+                <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">
+                    Pacing: {{ timeline_data.shortest_shot_duration }}s &ndash; {{ timeline_data.longest_shot_duration }}s per shot
+                </span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; font-size: 0.85rem; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border-color); text-align: left; color: var(--text-muted);">
+                            <th style="padding: 0.5rem;">Shot / Beat</th>
+                            <th style="padding: 0.5rem;">Time</th>
+                            <th style="padding: 0.5rem;">Spoken Text</th>
+                            <th style="padding: 0.5rem;">Visual Intent</th>
+                            <th style="padding: 0.5rem;">Route & Provider</th>
+                            <th style="padding: 0.5rem;">License</th>
+                            <th style="padding: 0.5rem;">Score</th>
+                            <th style="padding: 0.5rem;">Beat Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for shot in timeline_data.shots %}
+                        <tr style="border-bottom: 1px solid var(--border-color); {% if shot.is_fallback_card %}background: rgba(218, 54, 51, 0.08);{% endif %}">
+                            <td style="padding: 0.5rem; font-weight: bold;">
+                                #{{ shot.shot_index + 1 }}
+                                <div style="font-size: 0.7rem; color: #38bdf8; font-weight: normal;">{{ shot.duration }}s ({{ shot.shot_type|upper }})</div>
+                                {% if shot.metadata and shot.metadata.beat %}
+                                <div style="font-size: 0.65rem; color: #a371f7; font-weight: normal;">{{ shot.metadata.beat.beat_type|upper }}</div>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 0.5rem; color: #38bdf8; font-size: 0.8rem; white-space: nowrap;">{{ shot.start_time }}s &ndash; {{ shot.end_time }}s</td>
+                            <td style="padding: 0.5rem; font-size: 0.8rem; color: #e2e8f0; max-width: 200px;">
+                                {{ shot.sentence_text }}
+                            </td>
+                            <td style="padding: 0.5rem; color: var(--text-color); font-size: 0.8rem; max-width: 180px;">
+                                <div>{{ shot.query }}</div>
+                                {% if shot.metadata and shot.metadata.beat and shot.metadata.beat.entities %}
+                                <div style="font-size: 0.65rem; color: #ffd700;">Entities: {{ shot.metadata.beat.entities|join(', ') }}</div>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 0.5rem; text-transform: uppercase;">
+                                {% if shot.provider == 'procedural_motion' %}
+                                <span class="badge" style="background: #a371f7;">ROUTE C &bull; ANIMATION</span>
+                                {% elif shot.provider in ('gemini_imagen', 'gemini_veo') or shot.metadata.is_ai_generated %}
+                                <span class="badge" style="background: #e11d48;">ROUTE D &bull; AI IMAGE</span>
+                                {% elif shot.provider in ('nasa', 'wikimedia') and ('official' in shot.metadata.recommended_visual_route or 'nasa' in shot.provider) %}
+                                <span class="badge" style="background: #0284c7;">ROUTE A &bull; OFFICIAL DOC</span>
+                                {% elif shot.is_fallback_card %}
+                                <span class="badge" style="background: #da3633;">FALLBACK CARD</span>
+                                {% else %}
+                                <span class="badge" style="background: #238636;">ROUTE B &bull; {{ shot.provider }}</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 0.5rem; font-size: 0.75rem;">
+                                {% if shot.provider in ('gemini_imagen', 'gemini_veo') or shot.metadata.is_ai_generated %}
+                                <span style="color: #f43f5e; font-weight: bold;">AI-generated</span>
+                                {% elif shot.provider == 'procedural_motion' %}
+                                <span style="color: #c084fc;">Procedural Asset</span>
+                                {% elif shot.provider == 'nasa' %}
+                                <span style="color: #38bdf8;">Public Domain</span>
+                                {% else %}
+                                <span style="color: #4ade80;">Free Licensed</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 0.5rem; font-weight: bold; color: {% if shot.relevance_score >= 60 %}#3fb950{% else %}#f85149{% endif %};">{{ shot.relevance_score|round(0) }}/100</td>
+                            <td style="padding: 0.5rem;">
+                                <div style="display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap;">
+                                    <form method="POST" action="/api/videos/{{ selected_video.id }}/switch-beat-route" style="margin: 0; display: inline;">
+                                        <input type="hidden" name="shot_index" value="{{ shot.shot_index }}">
+                                        <input type="hidden" name="target_route" value="animation">
+                                        <button type="submit" class="btn btn-sm" style="font-size: 0.7rem; padding: 0.15rem 0.35rem; background: rgba(163, 113, 247, 0.2); color: #a371f7; border: 1px solid #a371f7;" title="Switch this beat to procedural data/diagram animation">✨ Animate</button>
+                                    </form>
+                                    <form method="POST" action="/api/videos/{{ selected_video.id }}/switch-beat-route" style="margin: 0; display: inline;">
+                                        <input type="hidden" name="shot_index" value="{{ shot.shot_index }}">
+                                        <input type="hidden" name="target_route" value="ai_image">
+                                        <button type="submit" class="btn btn-sm" style="font-size: 0.7rem; padding: 0.15rem 0.35rem; background: rgba(225, 29, 72, 0.2); color: #f43f5e; border: 1px solid #f43f5e;" title="Generate AI illustration via Gemini for this beat">🎨 AI</button>
+                                    </form>
+                                    <form method="POST" action="/api/videos/{{ selected_video.id }}/switch-beat-route" style="margin: 0; display: inline;">
+                                        <input type="hidden" name="shot_index" value="{{ shot.shot_index }}">
+                                        <input type="hidden" name="target_route" value="stock">
+                                        <button type="submit" class="btn btn-sm" style="font-size: 0.7rem; padding: 0.15rem 0.35rem; background: rgba(35, 134, 54, 0.2); color: #3fb950; border: 1px solid #238636;" title="Switch this beat to authentic stock footage">📹 Stock</button>
+                                    </form>
+                                    <details style="display: inline-block;">
+                                        <summary style="cursor: pointer; color: var(--primary-color); font-size: 0.7rem; padding: 0.15rem;">🔄 Query</summary>
+                                        <form method="POST" action="/api/videos/{{ selected_video.id }}/swap-shot" style="position: absolute; z-index: 10; background: #0f172a; border: 1px solid #334155; padding: 0.5rem; border-radius: 6px; display: flex; gap: 0.25rem; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+                                            <input type="hidden" name="shot_index" value="{{ shot.shot_index }}">
+                                            <input type="text" name="new_query" placeholder="New search query..." style="padding: 0.2rem 0.4rem; font-size: 0.75rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); width: 140px;">
+                                            <button type="submit" class="btn btn-sm btn-secondary" style="font-size: 0.75rem; padding: 0.2rem 0.4rem;">OK</button>
+                                        </form>
+                                    </details>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
         {% endif %}
@@ -299,6 +486,11 @@
                 <form method="POST" action="/api/videos/{{ selected_video.id }}/approve" style="display: inline;">
                     <button type="submit" class="btn btn-success" onclick="return confirm('Approve and publish this video to US schedule?');">
                         🚀 Approve & Publish (or Schedule)
+                    </button>
+                </form>
+                <form method="POST" action="/api/videos/{{ selected_video.id }}/regenerate-video" style="display: inline;">
+                    <button type="submit" class="btn btn-warning" onclick="return confirm('Re-render video visuals using multi-shot timeline (keeps voice & script)?');" style="background: #d29922; color: #000; font-weight: 700;">
+                        🎬 Re-render Video (Visuals Only)
                     </button>
                 </form>
                 <form method="POST" action="/api/videos/{{ selected_video.id }}/regenerate-script" style="display: inline;">

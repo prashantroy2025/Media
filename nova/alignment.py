@@ -58,11 +58,29 @@ def _normalize_token(token: str) -> str:
 def _convert_number_words(token: str) -> str:
     """Helper to convert spoken number representations to digits or vice-versa."""
     num_map = {
-        "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
-        "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
-        "ten": "10", "twenty": "20", "thirty": "30", "forty": "40",
-        "fifty": "50", "sixty": "60", "seventy": "70", "eighty": "80", "ninety": "90",
-        "hundred": "100", "thousand": "1000", "million": "1000000", "billion": "1000000000"
+        "zero": "0",
+        "one": "1",
+        "two": "2",
+        "three": "3",
+        "four": "4",
+        "five": "5",
+        "six": "6",
+        "seven": "7",
+        "eight": "8",
+        "nine": "9",
+        "ten": "10",
+        "twenty": "20",
+        "thirty": "30",
+        "forty": "40",
+        "fifty": "50",
+        "sixty": "60",
+        "seventy": "70",
+        "eighty": "80",
+        "ninety": "90",
+        "hundred": "100",
+        "thousand": "1000",
+        "million": "1000000",
+        "billion": "1000000000",
     }
     norm = _normalize_token(token)
     return num_map.get(norm, norm)
@@ -72,8 +90,11 @@ class ForcedAligner:
     def __init__(self, model_size: str = "tiny"):
         self.model_size = model_size
 
-    def align(self, audio_path: Path, script_sentences: list[str], max_drift_threshold_ms: float = 250.0) -> AlignmentResult:
+    def align(
+        self, audio_path: Path | str, script_sentences: list[str], max_drift_threshold_ms: float = 250.0
+    ) -> AlignmentResult:
         """Transcribes final narration audio, aligns with script words, and builds sentence boundaries."""
+        audio_path = Path(audio_path)
         logger.info(f"Running faster-whisper forced alignment on master audio: {audio_path.name}...")
 
         # 1. Transcribe audio with Whisper
@@ -86,11 +107,13 @@ class ForcedAligner:
                 full_transcript_parts.append(seg.text)
                 if seg.words:
                     for w in seg.words:
-                        whisper_words.append({
-                            "word": w.word.strip(),
-                            "start": round(w.start, 3),
-                            "end": round(w.end, 3),
-                        })
+                        whisper_words.append(
+                            {
+                                "word": w.word.strip(),
+                                "start": round(w.start, 3),
+                                "end": round(w.end, 3),
+                            }
+                        )
             full_transcript = " ".join(full_transcript_parts).strip()
         finally:
             del model

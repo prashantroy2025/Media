@@ -247,12 +247,16 @@ def run_youtube_auth(settings: NovaSettings) -> bool:
             subs = ch.get("statistics", {}).get("subscriberCount", "Hidden")
             vids = ch.get("statistics", {}).get("videoCount", "0")
 
-            console.print(f"\n[bold green]✓ Successfully Authenticated Channel:[/bold green] [bold white]{title}[/bold white] ({handle})")
+            console.print(
+                f"\n[bold green]✓ Successfully Authenticated Channel:[/bold green] [bold white]{title}[/bold white] ({handle})"
+            )
             console.print(f"  Subscribers: {subs} | Videos Uploaded: {vids}")
             console.print(f"  Saved token to: [cyan]{token_path}[/cyan] and [cyan]{alt_token_path}[/cyan]\n")
             return True
         else:
-            console.print("\n[bold green]✓ Credentials authorized successfully![/bold green] (No channel associated with this Google Account yet).")
+            console.print(
+                "\n[bold green]✓ Credentials authorized successfully![/bold green] (No channel associated with this Google Account yet)."
+            )
             return True
     except Exception as e:
         console.print(f"\n[bold red]❌ OAuth authentication failed:[/bold red] {e}")
@@ -276,13 +280,25 @@ def upload_test_video(settings: NovaSettings, db_mgr: DatabaseManager) -> bool:
 
     # Generate 3-second 1080x1920 test MP4 using ffmpeg lavfi
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", "color=c=black:s=1080x1920:d=3.0:r=30",
-        "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-        "-t", "3.0",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        str(test_video_path.resolve())
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black:s=1080x1920:d=3.0:r=30",
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=r=44100:cl=stereo",
+        "-t",
+        "3.0",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        str(test_video_path.resolve()),
     ]
     res = subprocess.run(cmd, capture_output=True)
     if res.returncode != 0:
@@ -307,10 +323,11 @@ def upload_test_video(settings: NovaSettings, db_mgr: DatabaseManager) -> bool:
         vid_id = pub_res.platform_post_id
         console.print("\n[bold green]✓ Test Upload Succeeded![/bold green]")
         console.print(f"  Short URL: [cyan]{pub_res.platform_url}[/cyan]")
-        console.print(f"  YouTube Studio Edit Link: [bold cyan]https://studio.youtube.com/video/{vid_id}/edit[/bold cyan]")
+        console.print(
+            f"  YouTube Studio Edit Link: [bold cyan]https://studio.youtube.com/video/{vid_id}/edit[/bold cyan]"
+        )
         console.print("  Privacy: [yellow]PRIVATE[/yellow] (Safe, not visible to public subscribers)\n")
         return True
     else:
         console.print(f"\n[bold red]❌ Upload Test Failed:[/bold red] {pub_res.error_message}")
         return False
-

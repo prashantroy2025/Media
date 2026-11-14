@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import sys
 
 import uvicorn
@@ -29,6 +30,8 @@ def main():
         prog="nova",
         description="⚡ Nova Autopilot v2.0: English Shock Facts & Science Shorts Studio (M2)",
     )
+    parser.add_argument("--no-animation", action="store_true", help="Disable procedural motion and data animations")
+    parser.add_argument("--no-ai", action="store_true", help="Disable Gemini AI image and video generation")
     subparsers = parser.add_subparsers(dest="command", help="Available studio commands")
 
     # Command: run
@@ -83,6 +86,7 @@ def main():
     # Command: regenerate
     p_regen = subparsers.add_parser("regenerate", help="Redo pipeline for an existing video record")
     p_regen.add_argument("--video-id", type=int, required=True, help="Video ID to regenerate")
+    p_regen.add_argument("--full", action="store_true", help="Redo entire pipeline including script and TTS audio")
 
     # Command: fetch-music
     subparsers.add_parser(
@@ -107,9 +111,85 @@ def main():
     subparsers.add_parser("doctor", help="Inspect environment, dependencies, and credentials")
 
     # Command: eval-scripts
-    subparsers.add_parser(
+    p_eval = subparsers.add_parser(
         "eval-scripts", help="Run golden evaluation harness across all niches and print quality report"
     )
+    p_eval.add_argument("--db", default=None, help="Database path for evaluation (default: data/test.db)")
+
+    # Command: reset
+    p_reset = subparsers.add_parser(
+        "reset", help="Safe fresh-start: wipe generated data, keep setup, configs, tokens, and study notes"
+    )
+    p_reset.add_argument(
+        "--list",
+        dest="list_only",
+        action="store_true",
+        default=False,
+        help="List everything that would be removed without taking action (dry run)",
+    )
+    p_reset.add_argument(
+        "--yes",
+        "-y",
+        dest="yes",
+        action="store_true",
+        default=False,
+        help="Bypass interactive confirmation phrase prompt",
+    )
+    p_reset.add_argument(
+        "--cache",
+        dest="clear_cache",
+        action="store_true",
+        default=False,
+        help="Also wipe downloaded stock media cache in assets/cache/",
+    )
+    p_reset.add_argument(
+        "--logs",
+        dest="clear_logs",
+        action="store_true",
+        default=False,
+        help="Also clear log files in data/logs/",
+    )
+    p_reset.add_argument(
+        "--permanent",
+        dest="permanent",
+        action="store_true",
+        default=False,
+        help="Permanently delete files instead of moving to macOS Trash",
+    )
+    p_reset.add_argument(
+        "--keep-learning",
+        dest="keep_learning",
+        action="store_true",
+        default=False,
+        help="Preserve learned niche weights and hook retention stats",
+    )
+    p_reset.add_argument(
+        "--no-backup",
+        dest="no_backup",
+        action="store_true",
+        default=False,
+        help="Skip automatic SQLite database backup (only permitted with --permanent and --yes)",
+    )
+    p_reset.add_argument(
+        "--only-demo",
+        dest="only_demo",
+        action="store_true",
+        default=False,
+        help="Only delete demo/dry-run records (is_demo=1) and leave production items intact",
+    )
+
+    # Command: fresh-start (friendly alias to reset)
+    p_fresh = subparsers.add_parser(
+        "fresh-start", help="Friendly alias for 'reset' (wipes generated data, keeps setup)"
+    )
+    p_fresh.add_argument("--list", dest="list_only", action="store_true", default=False)
+    p_fresh.add_argument("--yes", "-y", dest="yes", action="store_true", default=False)
+    p_fresh.add_argument("--cache", dest="clear_cache", action="store_true", default=False)
+    p_fresh.add_argument("--logs", dest="clear_logs", action="store_true", default=False)
+    p_fresh.add_argument("--permanent", dest="permanent", action="store_true", default=False)
+    p_fresh.add_argument("--keep-learning", dest="keep_learning", action="store_true", default=False)
+    p_fresh.add_argument("--no-backup", dest="no_backup", action="store_true", default=False)
+    p_fresh.add_argument("--only-demo", dest="only_demo", action="store_true", default=False)
 
     # Command: track-references
     subparsers.add_parser(
@@ -128,10 +208,46 @@ def main():
     auth_sub = p_auth.add_subparsers(dest="auth_platform", help="Target platform to authenticate")
     auth_sub.add_parser("youtube", help="Run YouTube Data API OAuth desktop consent flow")
 
+    # Command: audit-video
+    p_audit_vid = subparsers.add_parser("audit-video", help="Run comprehensive 25-point v8 scorecard audit on video")
+    p_audit_vid.add_argument("video_id", type=int, help="ID of video to audit")
+
+    # Command: audit-system
+    subparsers.add_parser("audit-system", help="Run system-wide scorecard audit across all rendered videos")
+
+    # Command: eval-all
+    subparsers.add_parser("eval-all", help="Run full regression test suite (pytest)")
+
     # Command: upload-test
     subparsers.add_parser(
         "upload-test", help="Upload a private 3-second test clip to YouTube and print studio edit link"
     )
+
+    # Command: providers
+    p_providers = subparsers.add_parser("providers", help="Manage multi-source licensed media providers")
+    p_providers.add_argument(
+        "provider_action",
+        choices=["list", "test", "enable", "disable", "stats", "audit"],
+        nargs="?",
+        default="list",
+        help="Action to perform",
+    )
+    p_providers.add_argument("target", nargs="?", default=None, help="Target provider ID (for test/enable/disable)")
+
+    # Command: library
+    p_library = subparsers.add_parser("library", help="Manage local licensed media library and storage cap")
+    p_library.add_argument(
+        "library_action",
+        choices=["list", "prefetch", "clean", "stats"],
+        nargs="?",
+        default="list",
+        help="Action to perform",
+    )
+    p_library.add_argument("--niche", default="ai_tech", help="Target niche for prefetch or listing")
+    p_library.add_argument("--limit", type=int, default=2, help="Limit count per theme or listing")
+    p_library.add_argument("--media-type", default="video", choices=["video", "image", "all"], help="Media type")
+    p_library.add_argument("--max-gb", type=float, default=20.0, help="Storage cap in GB")
+    p_library.add_argument("--dry-run", action="store_true", default=False, help="Dry run for clean")
 
     args = parser.parse_args()
     if not args.command:
@@ -139,6 +255,10 @@ def main():
         sys.exit(1)
 
     settings = load_config()
+    if getattr(args, "no_animation", False):
+        settings.animation.enabled = False
+    if getattr(args, "no_ai", False):
+        settings.gemini.enabled = False
     setup_logging(settings.resolve_path(settings.app.logs_dir))
     db_mgr = DatabaseManager(settings.resolve_path(settings.app.db_path))
 
@@ -249,10 +369,14 @@ def main():
             console.print(f"[red]Video #{args.video_id} not found.[/red]")
             sys.exit(1)
 
-        console.print(f"[bold yellow]Regenerating video #{args.video_id}...[/bold yellow]")
         runner = PipelineRunner(settings, db_mgr, dry_run=True)
-        new_video = runner.run_full(custom_topic_id=topic_id)
-        console.print(f"[bold green]Regenerated Video #{new_video.id} at {new_video.video_path}[/bold green]")
+        if getattr(args, "full", False):
+            console.print(f"[bold yellow]Full regeneration of video #{args.video_id} (new script & audio)...[/bold yellow]")
+            new_video = runner.run_full(custom_topic_id=topic_id)
+        else:
+            console.print(f"[bold yellow]Re-rendering visuals for video #{args.video_id} (multi-shot timeline)...[/bold yellow]")
+            new_video = runner.regenerate_video_visuals(args.video_id)
+        console.print(f"[bold green]Rendered Video #{new_video.id} at {new_video.video_path}[/bold green]")
 
     elif args.command == "fetch-music":
         mm = MusicManager(settings)
@@ -299,10 +423,12 @@ def main():
             sys.exit(1)
 
         golden_topics = json.loads(golden_file.read_text())
-        writer = Scriptwriter(settings, db_mgr)
-        orig_guard = OriginalityGuard(db_mgr)
+        eval_db_path = getattr(args, "db", None) or os.getenv("NOVA_DB_PATH") or "data/test.db"
+        eval_db_mgr = DatabaseManager(settings.resolve_path(eval_db_path))
+        writer = Scriptwriter(settings, eval_db_mgr)
+        orig_guard = OriginalityGuard(eval_db_mgr)
 
-        table = Table(title="Nova Autopilot v4.0 - Script Writing Evaluation Across Golden Topics")
+        table = Table(title=f"Nova Autopilot v4.0 - Script Writing Evaluation Across Golden Topics (DB: {eval_db_path})")
         table.add_column("ID", style="dim")
         table.add_column("Niche", style="cyan")
         table.add_column("Topic Title", style="white", max_width=32)
@@ -319,6 +445,7 @@ def main():
                 summary=item["source_text"],
                 source_url=item["source_url"],
                 niche=item["niche"],
+                is_demo=True,
             )
             t_start = time.time()
             script_record = writer.generate_script(t_obj, num_candidates=1)
@@ -357,6 +484,71 @@ def main():
 
         console.print(table)
 
+    elif args.command in ["reset", "fresh-start"]:
+        from datetime import datetime
+
+        from nova.reset import (
+            PipelineActiveError,
+            ResetManager,
+            ResetOptions,
+            ServerActiveError,
+            print_inventory,
+        )
+
+        is_list = args.list_only or (not args.yes and not args.permanent and not args.only_demo)
+
+        opts = ResetOptions(
+            list_only=is_list,
+            yes=args.yes,
+            clear_cache=args.clear_cache,
+            clear_logs=args.clear_logs,
+            permanent=args.permanent,
+            keep_learning=args.keep_learning,
+            no_backup=args.no_backup,
+            only_demo=args.only_demo,
+        )
+
+        mgr = ResetManager(options=opts)
+
+        # Pre-checks: check server and active pipeline locks
+        try:
+            mgr.pre_checks()
+        except (ServerActiveError, PipelineActiveError) as pe:
+            console.print(f"\n[bold red]PRE-CHECK FAILED:[/bold red] {pe}\n")
+            sys.exit(1)
+
+        inv = mgr.collect_inventory()
+        ts_preview = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_preview = f"data/backups/nova_{ts_preview}.db"
+        print_inventory(inv, backup_preview, opts)
+
+        if is_list:
+            console.print("[bold yellow]Dry-run complete (--list). No data was deleted or altered.[/bold yellow]")
+            console.print(
+                "To execute the reset, run: [bold cyan]python -m nova reset --yes[/bold cyan] "
+                "(or omit --yes to enter the confirmation phrase)\n"
+            )
+            sys.exit(0)
+
+        # Confirmation phrase prompt if not --yes
+        if not args.yes:
+            confirmation = console.input(
+                "[bold red]WARNING: Destructive fresh start requested.[/bold red]\n"
+                "Type [bold white]'DELETE GENERATED DATA'[/bold white] to confirm: "
+            )
+            if confirmation.strip() != "DELETE GENERATED DATA":
+                console.print("[bold red]Reset cancelled. Confirmation phrase did not match.[/bold red]")
+                sys.exit(1)
+
+        console.print("\n[bold cyan]Starting Fresh-Start Reset...[/bold cyan]")
+        report = mgr.execute_reset()
+        console.print("[bold green]✓ Fresh-start reset successfully completed![/bold green]")
+        if report.get("backup_path"):
+            console.print(f"[bold green]✓ Verified database backup saved to:[/bold green] {report['backup_path']}")
+        console.print(f"[bold green]✓ Cleaned {report['files_removed']} files ({report['bytes_removed'] / (1024*1024):.2f} MB)[/bold green]")
+        console.print("[bold green]✓ Reset autoincrement sequence counters. Next video ID will start at #1.[/bold green]")
+        console.print("\nNext step: run [bold cyan]python scripts/doctor.py[/bold cyan] or [bold cyan]python -m nova run[/bold cyan] to generate your first fresh video.\n")
+
     elif args.command == "diag-visuals":
         from nova.visuals import VisualsManager
 
@@ -375,6 +567,72 @@ def main():
         from nova.publishers.youtube import upload_test_video
 
         upload_test_video(settings, db_mgr)
+
+    elif args.command == "audit-video":
+        from nova.audit import VideoAuditor
+
+        auditor = VideoAuditor(settings, db_mgr)
+        report = auditor.audit_video(args.video_id)
+        auditor.print_rich_report(report)
+
+    elif args.command == "audit-system":
+        from nova.audit import VideoAuditor
+
+        auditor = VideoAuditor(settings, db_mgr)
+        session = db_mgr.session()
+        videos = session.query(Video).filter(Video.video_path != "").all()
+        session.close()
+
+        valid_videos = [v for v in videos if os.path.exists(v.video_path)]
+        if not valid_videos:
+            console.print("[yellow]No rendered video files found to audit.[/yellow]")
+            sys.exit(0)
+
+        reports = []
+        for v in valid_videos:
+            try:
+                rep = auditor.audit_video(v.id)
+                reports.append(rep)
+            except Exception as e:
+                console.print(f"[yellow]Warning auditing Video #{v.id}: {e}[/yellow]")
+
+        tbl = Table(title="Nova Autopilot v8.0 - System-Wide Scorecard Audit")
+        tbl.add_column("Video ID", justify="right", style="cyan")
+        tbl.add_column("Title", style="white", max_width=40)
+        tbl.add_column("Score", justify="right", style="magenta")
+        tbl.add_column("Passed", justify="right", style="green")
+        tbl.add_column("Total", justify="right")
+
+        for r in reports:
+            tbl.add_row(
+                str(r.video_id),
+                r.script_title,
+                f"{r.score_percentage:.1f}%",
+                str(r.passed_metrics),
+                str(r.total_metrics),
+            )
+        console.print(tbl)
+
+    elif args.command == "eval-all":
+        import subprocess
+
+        console.print("[bold cyan]Running Nova Autopilot v8.0 Full Regression Test Suite...[/bold cyan]")
+        res = subprocess.run([sys.executable, "-m", "pytest", "tests/"])
+        if res.returncode == 0:
+            console.print("[bold green]✓ All regression tests passed successfully![/bold green]")
+        else:
+            console.print("[bold red]✗ Some regression tests failed.[/bold red]")
+            sys.exit(res.returncode)
+
+    elif args.command == "providers":
+        from nova.providers.cli_handlers import handle_providers_cli
+
+        handle_providers_cli(args)
+
+    elif args.command == "library":
+        from nova.library.cli_handlers import handle_library_cli
+
+        handle_library_cli(args)
 
 
 if __name__ == "__main__":

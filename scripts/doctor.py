@@ -52,7 +52,10 @@ def run_doctor():
     # 2. Virtual environment
     def check_venv():
         in_venv = sys.prefix != sys.base_prefix or (PROJECT_ROOT / ".venv").exists()
-        return in_venv, "Virtualenv detected and active" if in_venv else "Running outside .venv (run via .venv/bin/python)"
+        return (
+            in_venv,
+            "Virtualenv detected and active" if in_venv else "Running outside .venv (run via .venv/bin/python)",
+        )
 
     # 3. FFmpeg & Hardware Encoder
     def check_ffmpeg():
@@ -70,6 +73,7 @@ def run_doctor():
     # 5. Ollama Server Running
     def check_ollama():
         import httpx
+
         host = settings.llm.ollama.host
         try:
             r = httpx.get(f"{host}/api/tags", timeout=3.0)
@@ -83,6 +87,7 @@ def run_doctor():
     # 6. LLM Model Available
     def check_model():
         import httpx
+
         host = settings.llm.ollama.host
         target_model = settings.llm.ollama.model
         try:
@@ -148,11 +153,14 @@ def run_doctor():
     def check_pexels():
         key = os.getenv("PEXELS_API_KEY")
         if not key:
-            return False, "PEXELS_API_KEY missing. Add to .env: PEXELS_API_KEY=your_key (from pexels.com/api)"
+            return (
+                False,
+                "PEXELS_API_KEY missing (RECOMMENDED: get free key at pexels.com/api to enable premium stock video)",
+            )
         try:
             r = requests.get("https://api.pexels.com/v1/curated?per_page=1", headers={"Authorization": key}, timeout=4)
             if r.status_code == 200:
-                return True, "Pexels API authenticated and active"
+                return True, "Pexels API authenticated and active (Preferred stock video provider)"
             return False, f"Pexels API returned HTTP {r.status_code} (Check key in .env)"
         except Exception as e:
             return False, f"Pexels request error: {e}"
@@ -161,7 +169,10 @@ def run_doctor():
     def check_pixabay():
         key = os.getenv("PIXABAY_API_KEY")
         if not key:
-            return False, "PIXABAY_API_KEY missing. Add to .env: PIXABAY_API_KEY=your_key (from pixabay.com/api/docs)"
+            return (
+                False,
+                "PIXABAY_API_KEY missing (RECOMMENDED: get free key at pixabay.com/api/docs for secondary stock video)",
+            )
         try:
             r = requests.get(f"https://pixabay.com/api/?key={key}&q=space&per_page=3", timeout=4)
             if r.status_code == 200:
@@ -169,6 +180,56 @@ def run_doctor():
             return False, f"Pixabay API returned HTTP {r.status_code}"
         except Exception as e:
             return False, f"Pixabay request error: {e}"
+
+    # 11. Open-License Icon & SFX Library
+    def check_motion_assets():
+        icon_dir = settings.resolve_path("assets/icons")
+        has_icons = (icon_dir / "LICENSE.txt").exists() and (icon_dir / "cpu.png").exists()
+        sfx_dir = settings.resolve_path("assets/sfx")
+        has_sfx = (sfx_dir / "LICENSE.md").exists() and (sfx_dir / "whoosh.wav").exists() and (sfx_dir / "pop.wav").exists()
+        if has_icons and has_sfx:
+            return True, "Open-license icons (MIT) and synthesized SFX (CC0) verified"
+        return False, "Run python -m nova.motion.icons and python -m nova.sfx to generate"
+
+    # 12. Topic Policy Configuration
+    def check_topic_policy():
+        policy_path = settings.resolve_path("config/topic_policy.yaml")
+        if policy_path.exists():
+            return True, "config/topic_policy.yaml present (Tier A, B Sensitive News, C Prohibited)"
+        return False, "Topic policy file missing at config/topic_policy.yaml"
+
+    # 13. Fast 1-Second Test Render & Loudness Measurement
+    def check_render_engine():
+        import subprocess
+        ffmpeg_bin = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+        try:
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=navy:s=1080x1920:d=1",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=f=440:d=1",
+                "-af",
+                "loudnorm=I=-14:LRA=11:TP=-1.5",
+                "-c:v",
+                "h264_videotoolbox",
+                "-b:v",
+                "2M",
+                "-f",
+                "null",
+                "-",
+            ]
+            res = subprocess.run(cmd, capture_output=True, timeout=10)
+            if res.returncode == 0:
+                return True, "VideoToolbox HW encoder, loudnorm mastering, and FFmpeg filtergraph operational"
+            return False, f"Render test failed with code {res.returncode}"
+        except Exception as e:
+            return False, f"Render test error: {e}"
 
     # 11. Optional Hosted LLM (Groq / Gemini)
     def check_hosted_llm():
@@ -211,6 +272,7 @@ def run_doctor():
                 from google.oauth2.credentials import Credentials
 
                 from nova.publishers.youtube import YOUTUBE_SCOPES
+
                 creds = Credentials.from_authorized_user_file(str(target_token), YOUTUBE_SCOPES)
                 is_refreshable = bool(creds.refresh_token)
                 if creds.valid:
@@ -244,6 +306,9 @@ def run_doctor():
         ("Keyless Media Sources", check_keyless_visuals),
         ("Pexels Video API", check_pexels),
         ("Pixabay Video API", check_pixabay),
+        ("Motion Icons & SFX", check_motion_assets),
+        ("Topic Safety Policy", check_topic_policy),
+        ("Render & HW Encoder", check_render_engine),
         ("Optional Hosted LLM", check_hosted_llm),
         ("Subtitle Typography", check_font),
         ("Music & Sound Effects", check_audio_assets),
@@ -256,7 +321,64 @@ def run_doctor():
         table.add_row(col_name, status, detail)
 
     console.print(table)
-    console.print("\n[bold]Summary:[/bold] All core rendering and generation tools inspected.")
+
+    # 16. Pluggable Media Providers Grouped Audit
+    from nova.providers.registry import ProviderRegistry
+    registry = ProviderRegistry()
+
+    p_table = Table(title="Pluggable Licensed Media Providers (Multi-Source Supply)", show_lines=True)
+    p_table.add_column("Category & Provider", style="bold white", width=28)
+    p_table.add_column("Status", justify="center", width=14)
+    p_table.add_column("Details, Signup URL & Live Diagnostic", style="white", width=46)
+
+    # Group 1: Works Now
+    works_now = [
+        ("Pixabay", "pixabay", "https://pixabay.com/api/docs/"),
+        ("NASA Image & Video", "nasa_library", "https://images.nasa.gov"),
+        ("Wikimedia Commons", "wikimedia_commons", "https://commons.wikimedia.org"),
+        ("Cleveland Museum of Art", "cleveland_museum", "https://www.clevelandart.org/open-access"),
+        ("The Met Museum", "met_museum", "https://metmuseum.github.io"),
+        ("Procedural Maps & Charts", "generated_maps", "Local Pillow synthesis"),
+    ]
+    p_table.add_row("[bold green]GROUP 1: WORKS NOW[/bold green]", "[green]ACTIVE[/green]", "[dim]Ready for pipeline renders[/dim]")
+    for disp, pid, url in works_now:
+        p = registry.get_provider(pid)
+        ok, msg = p.test_connection() if p else (False, "Not found")
+        stat = "[bold green]PASS[/bold green]" if ok else "[bold yellow]WARN[/bold yellow]"
+        p_table.add_row(f"  • {disp}", stat, f"{msg}\n[dim]{url}[/dim]")
+
+    # Group 2: Needs a Free Key
+    needs_key = [
+        ("Pexels Video & Photo", "pexels", "https://www.pexels.com/api/"),
+        ("Smithsonian Open Access", "smithsonian", "https://api.data.gov/signup/"),
+        ("Europeana Heritage", "europeana", "https://pro.europeana.eu/page/get-api"),
+        ("Freesound CC0 Audio", "freesound", "https://freesound.org/help/developers/"),
+        ("Unsplash Photography", "unsplash", "https://unsplash.com/developers"),
+    ]
+    p_table.add_row("[bold yellow]GROUP 2: NEEDS FREE KEY[/bold yellow]", "[yellow]OPTIONAL[/yellow]", "[dim]Skipped gracefully when missing key[/dim]")
+    for disp, pid, url in needs_key:
+        p = registry.get_provider(pid)
+        has_k = bool(getattr(p, "api_key", None)) if p else False
+        if has_k:
+            ok, msg = p.test_connection()
+            stat = "[bold green]PASS[/bold green]" if ok else "[bold yellow]WARN[/bold yellow]"
+            p_table.add_row(f"  • {disp}", stat, f"{msg}\n[dim]{url}[/dim]")
+        else:
+            p_table.add_row(f"  • {disp}", "[yellow]NEEDS KEY[/yellow]", f"Missing {p.key_env if p else 'KEY'}\n[dim]Free signup: {url}[/dim]")
+
+    # Group 3: Needs Decision
+    needs_decision = [
+        ("Coverr Video", "coverr", "Free API terms forbid commercial broadcast without enterprise contract."),
+        ("Jamendo Audio", "jamendo", "Developer API is non-commercial only; triggers YouTube Content ID claims."),
+    ]
+    p_table.add_row("[bold magenta]GROUP 3: NEEDS DECISION[/bold magenta]", "[magenta]DISABLED[/magenta]", "[dim]Disabled by default due to commercial/legal terms[/dim]")
+    for disp, pid, reason in needs_decision:
+        p_table.add_row(f"  • {disp}", "[magenta]DISABLED[/magenta]", reason)
+
+    console.print(p_table)
+
+    console.print("\n[bold]Summary:[/bold] All core rendering, generation tools, and media providers inspected.")
+    console.print("To test live provider connectivity: [cyan]python -m nova providers test[/cyan]")
     console.print("To run in mock/dry-run mode without external APIs: [cyan]python -m nova dry-run[/cyan]\n")
 
 

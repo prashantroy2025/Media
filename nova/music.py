@@ -123,34 +123,37 @@ class MusicManager:
         output_audio_path.parent.mkdir(parents=True, exist_ok=True)
 
         if not track:
-            # Voice-only copy
-            logger.info("Proceeding with voice-only track (no background music).")
+            # Voice-only copy with broadcast mastering
+            logger.info("Proceeding with voice-only track mastered to -14 LUFS.")
             cmd = [
                 "ffmpeg",
                 "-y",
                 "-i",
                 str(voice_path.resolve()),
+                "-af",
+                "loudnorm=I=-14:LRA=11:TP=-1.5",
                 "-c:a",
                 "aac",
                 "-b:a",
                 "192k",
                 "-ar",
-                "44100",
+                "48000",
                 str(output_audio_path.resolve()),
             ]
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
             return output_audio_path, attr
 
-        logger.info(f"Mixing background track '[cyan]{track.name}[/cyan]' with voice ducking (12%)...")
+        logger.info(f"Mixing background track '[cyan]{track.name}[/cyan]' with voice ducking (12%) and EBU R128 (-14 LUFS) mastering...")
         bg_vol = self.settings.music.default_volume
         fade_time = self.settings.music.fade_out_seconds
         fade_start = max(0.0, total_duration - fade_time)
 
-        # Loop background music, scale volume, apply fade-out at end, mix with voice
+        # Loop background music, scale volume, apply fade-out at end, mix with voice, master with loudnorm
         filter_complex = (
             f"[1:a]aloop=loop=-1:size=2e+09,volume={bg_vol},"
             f"afade=t=out:st={fade_start}:d={fade_time}[bg];"
-            f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[outa]"
+            f"[0:a][bg]amix=inputs=2:duration=first:weights=1.0 0.25:normalize=0[mixed];"
+            f"[mixed]loudnorm=I=-14:LRA=11:TP=-1.5[outa]"
         )
 
         cmd = [

@@ -23,24 +23,40 @@ def evaluate_copy_guard(text: str) -> tuple[bool, str]:
     timestamp_matches = re.findall(r"\b(?:\d{1,2}:)?\d{2}:\d{2}\b", text)
 
     # 2. Speaker prefixes (e.g., Speaker 1:, Host:, John:, Narrator:)
-    speaker_matches = re.findall(r"(?:^[A-Z][a-zA-Z\s]{1,15}:|\bSpeaker\s*\d*:|\bHost:|\bNarrator:)", text, flags=re.MULTILINE | re.IGNORECASE)
+    speaker_matches = re.findall(
+        r"(?:^[A-Z][a-zA-Z\s]{1,15}:|\bSpeaker\s*\d*:|\bHost:|\bNarrator:)", text, flags=re.MULTILINE | re.IGNORECASE
+    )
 
     # 3. Caption / Subtitle tags (e.g. [Music], [Applause], >>, ♪♪)
     caption_tags = re.findall(r"(\[Music\]|\[Applause\]|\[Laughter\]|>>|♪)", text, flags=re.IGNORECASE)
 
     if caption_tags:
-        return False, f"Detected subtitle/caption artifacts ({caption_tags[:3]}). Pasted transcripts are strictly forbidden."
+        return (
+            False,
+            f"Detected subtitle/caption artifacts ({caption_tags[:3]}). Pasted transcripts are strictly forbidden.",
+        )
 
     if len(timestamp_matches) >= 2 or (timestamp_matches and speaker_matches):
-        return False, f"Detected timestamp markers ({timestamp_matches[:3]}). Notes must be in your own words, not transcripts."
+        return (
+            False,
+            f"Detected timestamp markers ({timestamp_matches[:3]}). Notes must be in your own words, not transcripts.",
+        )
 
     if len(speaker_matches) >= 2:
-        return False, f"Detected dialogue speaker markers ({speaker_matches[:2]}). Enter abstract observations, not dialogue."
+        return (
+            False,
+            f"Detected dialogue speaker markers ({speaker_matches[:2]}). Enter abstract observations, not dialogue.",
+        )
 
     # 4. Long run of sentences without analytical commentary
     sentences = [s.strip() for s in re.split(r"[.!?]", text) if len(s.strip().split()) > 4]
-    if len(sentences) > 10 and not any(k in text.lower() for k in ["hook", "structure", "angle", "why", "weakness", "paced", "visual", "cut"]):
-        return False, "Text appears to be an unanalyzed raw transcript. Please summarize key learnings and structural notes."
+    if len(sentences) > 10 and not any(
+        k in text.lower() for k in ["hook", "structure", "angle", "why", "weakness", "paced", "visual", "cut"]
+    ):
+        return (
+            False,
+            "Text appears to be an unanalyzed raw transcript. Please summarize key learnings and structural notes.",
+        )
 
     return True, ""
 

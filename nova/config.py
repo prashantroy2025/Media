@@ -130,7 +130,14 @@ class GroqConfig(BaseModel):
 
 
 class GeminiConfig(BaseModel):
-    model: str = "gemini-2.0-flash"
+    enabled: bool = True
+    model: str = "gemini-3.8-flash"
+    text_model: str = "gemini-3.8-flash"
+    image_model: str = "gemini-3.1-flash-image"
+    veo_enabled: bool = False
+    max_images_per_video: int = 4
+    max_veo_seconds_per_video: int = 8
+    daily_budget: float = 5.0
     timeout_seconds: int = 30
     api_key: str | None = None
 
@@ -169,7 +176,7 @@ class SubtitleConfig(BaseModel):
     font_name: str = "Montserrat-ExtraBold"
     font_file: str = "assets/fonts/Montserrat-ExtraBold.ttf"
     words_per_group: int = 3
-    safe_margin_y: int = 1150
+    safe_margin_y: int = 1380
     primary_color: str = "&H00FFFFFF"
     highlight_color: str = "&H0000FFFF"
     outline_color: str = "&H00000000"
@@ -198,6 +205,9 @@ class MusicConfig(BaseModel):
 
 class VisualsConfig(BaseModel):
     image_gen_enabled: bool = False
+    min_match_score: float = 60.0
+    illustrative_badge: bool = True
+    max_ken_burns_zoom: float = 1.15
     providers_order: list[str] = Field(
         default_factory=lambda: [
             "pexels_video",
@@ -211,6 +221,12 @@ class VisualsConfig(BaseModel):
     stock_providers: list[str] = Field(default_factory=lambda: ["pexels", "pixabay"])
     ken_burns_zoom_speed: float = 1.05
     flat_frame_threshold: float = 0.05
+
+
+class AnimationConfig(BaseModel):
+    enabled: bool = True
+    intensity: str = "low"
+    fps: int = 30
 
 
 class AudienceConfig(BaseModel):
@@ -386,6 +402,8 @@ class NovaSettings(BaseModel):
     video: VideoConfig = Field(default_factory=VideoConfig)
     music: MusicConfig = Field(default_factory=MusicConfig)
     visuals: VisualsConfig = Field(default_factory=VisualsConfig)
+    animation: AnimationConfig = Field(default_factory=AnimationConfig)
+    gemini: GeminiConfig = Field(default_factory=GeminiConfig)
 
     def resolve_path(self, rel_or_abs: str | Path) -> Path:
         """Resolves relative paths to the project root directory."""
@@ -410,6 +428,8 @@ def load_config(config_path: str | Path | None = None) -> NovaSettings:
     settings = NovaSettings(**raw_data)
 
     # Inject environment variables
+    if os.getenv("NOVA_DB_PATH"):
+        settings.app.db_path = os.getenv("NOVA_DB_PATH")
     if os.getenv("CONTENT_LANGUAGE"):
         settings.content.language = os.getenv("CONTENT_LANGUAGE")  # type: ignore
     if os.getenv("OLLAMA_HOST"):
@@ -418,6 +438,7 @@ def load_config(config_path: str | Path | None = None) -> NovaSettings:
         settings.llm.groq.api_key = os.getenv("GROQ_API_KEY")
     if os.getenv("GEMINI_API_KEY"):
         settings.llm.gemini.api_key = os.getenv("GEMINI_API_KEY")
+        settings.gemini.api_key = os.getenv("GEMINI_API_KEY")
     if os.getenv("HF_TOKEN"):
         settings.llm.huggingface.api_token = os.getenv("HF_TOKEN")
     if os.getenv("INSTAGRAM_ACCESS_TOKEN"):

@@ -113,15 +113,21 @@ class TopicRanker:
             eligible_topics: list[Topic] = []
 
             for topic in candidate_topics:
-                # 0. Topic Safety Filter (skip politicians, scandals, violence, advice)
-                is_safe, safety_reason, _ = evaluate_topic_safety(
-                    topic.title, topic.summary or "", topic.niche or "ai_tech"
+                # 0. Three-Tier Topic Safety Policy (Tier A, Tier B Sensitive News, Tier C Prohibited)
+                is_safe, safety_reason, meta = evaluate_topic_safety(
+                    topic.title,
+                    topic.summary or "",
+                    topic.niche or "ai_tech",
+                    source_url=topic.source_url or "",
                 )
+                topic.tier = meta.get("tier", "tier_a")
+                topic.requires_manual_approval = meta.get("requires_manual_approval", False)
+                topic.safety_status = meta.get("tier", "tier_a")
+                topic.safety_reason = safety_reason
+
                 if not is_safe:
-                    logger.info(f"Skipping unsafe topic '{topic.title[:60]}...': {safety_reason}")
+                    logger.info(f"Skipping prohibited topic '{topic.title[:60]}...': {safety_reason}")
                     topic.status = "unsafe_skipped"
-                    topic.safety_status = "unsafe"
-                    topic.safety_reason = safety_reason
                     continue
 
                 # 1. 60-day Near-Duplicate Filter (Jaccard > 0.45)

@@ -72,7 +72,9 @@ class AngleGenerator:
     def choose_best_angle(self, topic: Topic, reference_title: str = "") -> ProposedAngle:
         angles = self.propose_angles(topic, reference_title)
         best = angles[0]
-        logger.info(f"Selected distinct angle: [bold cyan]{best.angle_type}[/bold cyan] (Score: {best.distinctiveness_score:.1f})")
+        logger.info(
+            f"Selected distinct angle: [bold cyan]{best.angle_type}[/bold cyan] (Score: {best.distinctiveness_score:.1f})"
+        )
         return best
 
 
@@ -91,6 +93,7 @@ class OriginalityGuard:
         matches source_texts verbatim.
         Returns (True, '') if original, (False, matching_sequence) if violated.
         """
+
         def tokenize(text: str) -> list[str]:
             return re.sub(r"[^\w\s]", "", text.lower()).split()
 
@@ -157,12 +160,18 @@ class OriginalityGuard:
             return True, "Default pass (single source)"
 
         # Check for multiple distinct sources
-        sources = {f.get("source_url") or f.get("source_name") for f in facts_used if f.get("source_url") or f.get("source_name")}
+        sources = {
+            f.get("source_url") or f.get("source_name")
+            for f in facts_used
+            if f.get("source_url") or f.get("source_name")
+        }
         if len(sources) >= 2:
             return True, f"Multi-source verified ({len(sources)} unique sources used)"
 
         # Check if any fact has a concrete calculation or dual unit
-        has_calc = any("(" in str(f.get("fact", "")) or any(c.isdigit() for c in str(f.get("number_unit", ""))) for f in facts_used)
+        has_calc = any(
+            "(" in str(f.get("fact", "")) or any(c.isdigit() for c in str(f.get("number_unit", ""))) for f in facts_used
+        )
         if has_calc:
             return True, "Value-add verified via quantified calculation / comparison"
 

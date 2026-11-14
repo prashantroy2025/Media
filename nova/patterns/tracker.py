@@ -159,18 +159,18 @@ class ReferenceChannelTracker:
         if not self._check_and_increment_quota(1):
             return []
 
-        vid_res = (
-            client.videos()
-            .list(part="snippet,contentDetails,statistics", id=",".join(video_ids))
-            .execute()
-        )
+        vid_res = client.videos().list(part="snippet,contentDetails,statistics", id=",".join(video_ids)).execute()
         vid_items = vid_res.get("items", [])
 
         # Compute median views
         views_list = [int(v.get("statistics", {}).get("viewCount", 0)) for v in vid_items]
         views_sorted = sorted(views_list)
         n = len(views_sorted)
-        median_views = (views_sorted[n // 2] if n % 2 != 0 else (views_sorted[n // 2 - 1] + views_sorted[n // 2]) / 2) if n > 0 else 1000.0
+        median_views = (
+            (views_sorted[n // 2] if n % 2 != 0 else (views_sorted[n // 2 - 1] + views_sorted[n // 2]) / 2)
+            if n > 0
+            else 1000.0
+        )
 
         records: list[ReferenceVideo] = []
         session = self.db_mgr.session()
@@ -251,14 +251,16 @@ class ReferenceChannelTracker:
             results = []
             for item in items:
                 dur = parse_iso_duration(item.get("contentDetails", {}).get("duration", ""))
-                results.append({
-                    "id": item["id"],
-                    "title": item.get("snippet", {}).get("title", ""),
-                    "channel_title": item.get("snippet", {}).get("channelTitle", ""),
-                    "duration_seconds": dur,
-                    "is_short": dur <= 180.0,
-                    "views": int(item.get("statistics", {}).get("viewCount", 0)),
-                })
+                results.append(
+                    {
+                        "id": item["id"],
+                        "title": item.get("snippet", {}).get("title", ""),
+                        "channel_title": item.get("snippet", {}).get("channelTitle", ""),
+                        "duration_seconds": dur,
+                        "is_short": dur <= 180.0,
+                        "views": int(item.get("statistics", {}).get("viewCount", 0)),
+                    }
+                )
             return results
         except Exception as e:
             logger.warning(f"Could not fetch mostPopular chart: {e}")

@@ -13,6 +13,7 @@ try:
     nlp = spacy.load("en_core_web_sm")
 except Exception:
     import en_core_web_sm
+
     nlp = en_core_web_sm.load()
 
 # Banned placeholders that must NEVER appear in real structured facts
@@ -103,10 +104,35 @@ ABSTRACT_SUBJECT_WORDS = {
 }
 
 STOPWORDS = set(spacy.lang.en.stop_words.STOP_WORDS) | {
-    "a", "an", "the", "this", "that", "these", "those",
-    "it", "its", "they", "their", "them", "we", "our", "us",
-    "he", "his", "him", "she", "her", "you", "your",
-    "what", "why", "how", "who", "when", "where", "which"
+    "a",
+    "an",
+    "the",
+    "this",
+    "that",
+    "these",
+    "those",
+    "it",
+    "its",
+    "they",
+    "their",
+    "them",
+    "we",
+    "our",
+    "us",
+    "he",
+    "his",
+    "him",
+    "she",
+    "her",
+    "you",
+    "your",
+    "what",
+    "why",
+    "how",
+    "who",
+    "when",
+    "where",
+    "which",
 }
 
 # Entity aliases mapping canonical names to acceptable references
@@ -149,9 +175,45 @@ ACTION_SYNONYMS: dict[str, list[str]] = {
     "transmit": ["transmit", "transmits", "transmitted", "broadcast", "send", "signal", "communicate"],
     "weigh": ["weigh", "weighs", "weighed", "mass", "scale"],
     "invest": ["invest", "invests", "invested", "pour", "commit", "allocate", "spend"],
-    "erupt": ["erupt", "erupts", "erupted", "outburst", "outbursts", "explode", "explodes", "exploded", "flare", "blast", "burst"],
-    "disrupt": ["disrupt", "disrupted", "disrupts", "outage", "outages", "down", "halt", "halted", "crash", "crashed", "offline", "failure", "broken"],
-    "apologize": ["apologize", "apologized", "apologizes", "apology", "sorry", "regret", "statement", "admit", "concede"],
+    "erupt": [
+        "erupt",
+        "erupts",
+        "erupted",
+        "outburst",
+        "outbursts",
+        "explode",
+        "explodes",
+        "exploded",
+        "flare",
+        "blast",
+        "burst",
+    ],
+    "disrupt": [
+        "disrupt",
+        "disrupted",
+        "disrupts",
+        "outage",
+        "outages",
+        "down",
+        "halt",
+        "halted",
+        "crash",
+        "crashed",
+        "offline",
+        "failure",
+        "broken",
+    ],
+    "apologize": [
+        "apologize",
+        "apologized",
+        "apologizes",
+        "apology",
+        "sorry",
+        "regret",
+        "statement",
+        "admit",
+        "concede",
+    ],
     "ban": ["ban", "banned", "bans", "restrict", "restricted", "block", "blocked", "embargo"],
     "power": ["power", "powers", "powered", "run", "runs", "fuel", "fuels", "drive", "drives"],
 }
@@ -164,7 +226,17 @@ OUTCOME_SYNONYMS: dict[str, list[str]] = {
     "solve": ["solve", "solved", "fix", "fixed", "resolve", "resolved", "repair", "pass", "passed"],
     "reach": ["reach", "reached", "record", "recorded", "earn", "earned", "hit", "grow", "generate", "generated"],
     "crash": ["crash", "crashed", "collision", "accident", "incident"],
-    "light": ["light", "illuminate", "illuminated", "explain", "explained", "clarify", "clarified", "reveal", "revealed"],
+    "light": [
+        "light",
+        "illuminate",
+        "illuminated",
+        "explain",
+        "explained",
+        "clarify",
+        "clarified",
+        "reveal",
+        "revealed",
+    ],
 }
 
 NOMINALIZATION_ACTIONS: dict[str, str] = {
@@ -288,8 +360,23 @@ def validate_fact(fact: StructuredFact, topic_title: str = "") -> tuple[bool, st
 
 
 PRESERVE_CAPS = {
-    "NVIDIA", "NASA", "AI", "TSMC", "SWE", "JWST", "CEO", "US", "UK",
-    "EDGAR", "GPU", "UNDP", "WWDC", "MLA", "CS", "LLM", "B200"
+    "NVIDIA",
+    "NASA",
+    "AI",
+    "TSMC",
+    "SWE",
+    "JWST",
+    "CEO",
+    "US",
+    "UK",
+    "EDGAR",
+    "GPU",
+    "UNDP",
+    "WWDC",
+    "MLA",
+    "CS",
+    "LLM",
+    "B200",
 }
 
 
@@ -309,7 +396,18 @@ def normalize_headline_casing(text: str) -> str:
                 new_words.append(w)
             elif i == 0:
                 new_words.append(w)
-            elif clean_w in {"Trump", "Lutnick", "Sonnet", "Claude", "DeepSeek", "Waymo", "Starlink", "Gemini", "Blackwell", "Europa"}:
+            elif clean_w in {
+                "Trump",
+                "Lutnick",
+                "Sonnet",
+                "Claude",
+                "DeepSeek",
+                "Waymo",
+                "Starlink",
+                "Gemini",
+                "Blackwell",
+                "Europa",
+            }:
                 new_words.append(w)
             else:
                 new_words.append(w.lower())
@@ -369,7 +467,9 @@ def extract_structured_facts(
     ents = [e for e in doc.ents if e.label_ in {"PERSON", "ORG", "PRODUCT", "ASTRONOMICAL", "NORP", "FAC", "LOC"}]
     # Also check full original title for entities
     orig_doc = nlp(clean_title)
-    orig_ents = [e for e in orig_doc.ents if e.label_ in {"PERSON", "ORG", "PRODUCT", "ASTRONOMICAL", "NORP", "FAC", "LOC"}]
+    orig_ents = [
+        e for e in orig_doc.ents if e.label_ in {"PERSON", "ORG", "PRODUCT", "ASTRONOMICAL", "NORP", "FAC", "LOC"}
+    ]
 
     noun_chunks = list(doc.noun_chunks)
 
@@ -384,7 +484,11 @@ def extract_structured_facts(
         if first_clean.lower() in ABSTRACT_SUBJECT_WORDS:
             # Look at subsequent chunks or prepositional objects
             for chunk in noun_chunks[1:]:
-                c_tokens = [t.text for t in nlp(chunk.text) if t.lower_ not in STOPWORDS and t.pos_ not in {"DET", "ADV", "PRON"}]
+                c_tokens = [
+                    t.text
+                    for t in nlp(chunk.text)
+                    if t.lower_ not in STOPWORDS and t.pos_ not in {"DET", "ADV", "PRON"}
+                ]
                 c_clean = " ".join(c_tokens)
                 if c_clean and c_clean.lower() not in ABSTRACT_SUBJECT_WORDS:
                     candidate_subject = c_clean
@@ -443,7 +547,8 @@ def extract_structured_facts(
         if not primary_action and clean_summary:
             sum_doc = nlp(clean_summary[:200])
             sum_verbs = [
-                t.lemma_ for t in sum_doc
+                t.lemma_
+                for t in sum_doc
                 if t.pos_ == "VERB" and t.lemma_ not in {"be", "have", "do", "say", "tell", "note", "report", "claim"}
             ]
             if sum_verbs:
@@ -497,14 +602,20 @@ def extract_structured_facts(
         summary_doc = nlp(clean_summary[:250])
         s_chunks = list(summary_doc.noun_chunks)
         s_verbs = [
-            t.lemma_ for t in summary_doc
-            if t.pos_ == "VERB" and t.lemma_ not in {"be", "have", "do", "say", "tell", "note", "report", "claim", "argue", "suggest"}
+            t.lemma_
+            for t in summary_doc
+            if t.pos_ == "VERB"
+            and t.lemma_ not in {"be", "have", "do", "say", "tell", "note", "report", "claim", "argue", "suggest"}
         ]
         if s_chunks and s_verbs:
             s_subj = " ".join(t.text for t in nlp(s_chunks[0].text) if t.lower_ not in STOPWORDS)
             # Ensure subject is not an abstract or attribution noun
             s_tokens = [t.lower() for t in s_subj.split()]
-            if s_subj and s_subj.lower() not in ABSTRACT_SUBJECT_WORDS and not any(st in ABSTRACT_SUBJECT_WORDS for st in s_tokens):
+            if (
+                s_subj
+                and s_subj.lower() not in ABSTRACT_SUBJECT_WORDS
+                and not any(st in ABSTRACT_SUBJECT_WORDS for st in s_tokens)
+            ):
                 s_action = s_verbs[0]
                 s_obj = s_chunks[1].text if len(s_chunks) > 1 else ""
                 s_numbers = _extract_numbers_with_context(clean_summary)
@@ -628,9 +739,18 @@ def verify_fact_fidelity(sentence: str, fact: StructuredFact) -> tuple[bool, str
         nums = re.findall(r"\d+", fact.number_with_unit)
         if nums:
             num_words = {
-                "6": "six", "49": "forty-nine", "50": "fifty", "80": "eighty",
-                "208": "two hundred", "2": "two", "3": "three", "5": "five",
-                "10": "ten", "100": "hundred", "1000": "thousand", "1000000": "million"
+                "6": "six",
+                "49": "forty-nine",
+                "50": "fifty",
+                "80": "eighty",
+                "208": "two hundred",
+                "2": "two",
+                "3": "three",
+                "5": "five",
+                "10": "ten",
+                "100": "hundred",
+                "1000": "thousand",
+                "1000000": "million",
             }
             has_digits = any(n in s_lower for n in nums)
             has_words = any(num_words.get(n, "----") in s_lower for n in nums)

@@ -12,6 +12,7 @@ Implements:
 """
 
 import json
+import os
 import re
 from datetime import UTC, datetime
 
@@ -36,11 +37,14 @@ from nova.utils.units import augment_text_with_dual_units
 
 class ScriptGenerationFailedError(Exception):
     """Raised when LLM script generation fails quality gates and no contract-compliant script can be built."""
+
     pass
+
 
 # ---------------------------------------------------------------------------
 # Data Schemas
 # ---------------------------------------------------------------------------
+
 
 class VisualIntentSchema(BaseModel):
     main_subject: str = Field(..., description="Concrete physical noun visible on camera")
@@ -53,8 +57,6 @@ class VisualIntentSchema(BaseModel):
     )
     avoid: list[str] = Field(default_factory=list, description="Things to avoid in visual")
     on_screen_label: str | None = Field(default=None, description="Optional 1-3 word high-impact text or number")
-
-
 
 
 class SpineBeatSchema(BaseModel):
@@ -113,9 +115,7 @@ class GeneratedScriptSchema(BaseModel):
     hook_candidates: list[str] = Field(default_factory=list)
     angle: str = Field(default="how_it_works")
     spine: NarrativeSpineSchema = Field(default_factory=NarrativeSpineSchema)
-    sentences: list[SentenceContract] = Field(
-        default_factory=list, description="The ONE source of truth sentence list"
-    )
+    sentences: list[SentenceContract] = Field(default_factory=list, description="The ONE source of truth sentence list")
     scenes: list[SceneSchema] = Field(default_factory=list)
     cta: str = Field(default="What surprised you most? Comment below!")
     hashtags: str | list[str] = Field(default="#Shorts #Science #Tech")
@@ -158,7 +158,7 @@ class GeneratedScriptSchema(BaseModel):
             # Reconstruct sentences from scenes
             self.sentences = [
                 SentenceContract(
-                    id=f"S{i+1}",
+                    id=f"S{i + 1}",
                     text=sc.voiceover,
                     role="hook" if i == 0 else "fact",
                     connects_to_prev="Opening line" if i == 0 else "Follows logically",
@@ -178,6 +178,7 @@ class GeneratedScriptSchema(BaseModel):
 # Validation & Fidelity Helper Functions
 # ---------------------------------------------------------------------------
 
+
 def check_duplicate_sentences(sentences: list[str]) -> tuple[bool, str]:
     """Ensures no sentence is repeated or near-repeated (token Jaccard >= 0.8 or same first 6 words)."""
     norm_sentences = [re.sub(r"[^\w\s]", "", s.lower()).split() for s in sentences if s.strip()]
@@ -189,18 +190,16 @@ def check_duplicate_sentences(sentences: list[str]) -> tuple[bool, str]:
                 continue
             # Check same first 6 words
             if len(w1) >= 6 and len(w2) >= 6 and w1[:6] == w2[:6]:
-                return False, f"Sentences {i+1} and {j+1} share identical opening words: '{' '.join(w1[:6])}'"
+                return False, f"Sentences {i + 1} and {j + 1} share identical opening words: '{' '.join(w1[:6])}'"
             # Exact token match
             if w1 == w2:
-                return False, f"Sentences {i+1} and {j+1} are completely identical: '{' '.join(w1)}'"
+                return False, f"Sentences {i + 1} and {j + 1} are completely identical: '{' '.join(w1)}'"
             # Jaccard similarity
             s1, s2 = set(w1), set(w2)
             jaccard = len(s1.intersection(s2)) / len(s1.union(s2))
             if jaccard >= 0.80:
-                return False, f"Sentences {i+1} and {j+1} are near-duplicates (Jaccard: {jaccard:.2f})"
+                return False, f"Sentences {i + 1} and {j + 1} are near-duplicates (Jaccard: {jaccard:.2f})"
     return True, ""
-
-
 
 
 def evaluate_adjacent_coherence(s1: str, s2: str, connects_to_prev: str = "") -> tuple[float, str]:
@@ -249,7 +248,10 @@ def evaluate_adjacent_coherence(s1: str, s2: str, connects_to_prev: str = "") ->
         score += 0.5
 
     final_score = min(5.0, max(1.0, score))
-    return final_score, "High continuity with explicit connector" if final_score >= 4.0 else "Weak bridge between sentences"
+    return (
+        final_score,
+        "High continuity with explicit connector" if final_score >= 4.0 else "Weak bridge between sentences",
+    )
 
 
 def _extract_numbers(text: str) -> list[str]:
@@ -276,12 +278,15 @@ def _score_hook(hook: str) -> float:
 # Scriptwriter Class
 # ---------------------------------------------------------------------------
 
+
 class Scriptwriter:
     def __init__(self, settings: NovaSettings, db_mgr: DatabaseManager):
         self.settings = settings
         self.db_mgr = db_mgr
         p_file = getattr(settings.content, "persona_file", "config/persona.md")
-        self.persona_file = settings.resolve_path(p_file) if hasattr(settings, "resolve_path") else PROJECT_ROOT / p_file
+        self.persona_file = (
+            settings.resolve_path(p_file) if hasattr(settings, "resolve_path") else PROJECT_ROOT / p_file
+        )
         self.persona_text = self._load_persona()
         self.language = getattr(settings.content, "language", "en")
         self.angle_gen = AngleGenerator(db_mgr)
@@ -433,6 +438,8 @@ class Scriptwriter:
         all_sentences = [s.text for s in script.sentences]
         if not all_sentences:
             return False, "Script has no sentences", 0.0
+        if len(all_sentences) < 3:
+            return False, f"Script too short ({len(all_sentences)} sentences; required 4 to 6)", 0.0
 
         # Hook length check (strict <= 12 words)
         hook_text = script.sentences[0].text if script.sentences else script.hook
@@ -473,7 +480,7 @@ class Scriptwriter:
             c_score, _ = evaluate_adjacent_coherence(s1, s2, conn)
             coherence_scores.append(c_score)
             if c_score < 3.0:
-                return False, f"Low coherence ({c_score:.1f}) between sentences {i+1} and {i+2}", 0.0
+                return False, f"Low coherence ({c_score:.1f}) between sentences {i + 1} and {i + 2}", 0.0
 
         avg_coherence = sum(coherence_scores) / len(coherence_scores) if coherence_scores else 4.0
 
@@ -558,20 +565,159 @@ Schema format:
       "connects_to_prev": "Opening line",
       "new_information": "The surprising premise",
       "visual_intent": {{
-        "main_subject": "exact physical subject e.g. microchip processor or telescope lens",
-        "action_or_state": "physical motion or state e.g. glowing or rotating",
-        "setting": "physical environment e.g. cleanroom laboratory or deep space",
-        "queries": ["specific footage search term 1", "broader footage search term 2", "context footage search term 3"],
-        "on_screen_label": "Key Stat"
+        "main_subject": "telescope observing night sky",
+        "action_or_state": "telescope dome opening under stars",
+        "setting": "high altitude observatory",
+        "queries": ["observatory telescope night sky", "stars deep space", "astronomy dome"],
+        "on_screen_label": "Deep Space"
+      }}
+    }},
+    {{
+      "id": "S2",
+      "text": "Context sentence explaining the underlying mystery or background.",
+      "role": "context",
+      "fact_ids": ["F1"],
+      "connects_to_prev": "Explains why the hook matters",
+      "new_information": "Historical discovery",
+      "visual_intent": {{
+        "main_subject": "massive blue star glowing",
+        "action_or_state": "plasma pulsing around core",
+        "setting": "distant nebula",
+        "queries": ["pulsing star nebula", "supernova explosion animation", "space plasma"],
+        "on_screen_label": "Massive Star"
+      }}
+    }},
+    {{
+      "id": "S3",
+      "text": "The turning point or mechanism with concrete numbers.",
+      "role": "turn",
+      "fact_ids": ["F2"],
+      "connects_to_prev": "Reveals the key mechanism",
+      "new_information": "Measurement or discovery",
+      "visual_intent": {{
+        "main_subject": "spectrometer sensor instrument",
+        "action_or_state": "analyzing light spectrum wavelength",
+        "setting": "astrophysics laboratory",
+        "queries": ["light spectrum science", "spectrometer laser data", "scientific research display"],
+        "on_screen_label": "Spectral Data"
+      }}
+    }},
+    {{
+      "id": "S4",
+      "text": "Climax sentence showing the final revelation or result.",
+      "role": "climax",
+      "fact_ids": ["F2"],
+      "connects_to_prev": "Delivers the core insight",
+      "new_information": "Final conclusion",
+      "visual_intent": {{
+        "main_subject": "cosmic explosion shockwave",
+        "action_or_state": "expanding gas shell into space",
+        "setting": "deep cosmos",
+        "queries": ["shockwave cosmos explosion", "nebula expansion time lapse", "stellar outburst"],
+        "on_screen_label": "Outburst"
+      }}
+    }},
+    {{
+      "id": "S5",
+      "text": "Resolution sentence explaining the broad impact for science.",
+      "role": "resolution",
+      "fact_ids": [],
+      "connects_to_prev": "Connects to future discoveries",
+      "new_information": "Broader significance",
+      "visual_intent": {{
+        "main_subject": "astronomer looking at screen",
+        "action_or_state": "reviewing deep space telescope data",
+        "setting": "modern observatory control room",
+        "queries": ["astronomer control room", "researcher analyzing space data", "modern science laboratory"],
+        "on_screen_label": "New Physics"
       }}
     }}
   ],
-  "cta": "Closing line",
+  "cta": "Closing line under 10 words",
   "hashtags": "#Shorts #Science",
   "description": "Summary"
 }}"""
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
+        # Mock mode for air-gapped testing and verification harnesses
+        if os.getenv("NOVA_MOCK_LLM"):
+            self.last_model_used = "mock/test-suite"
+            return json.dumps(
+                {
+                    "title": "How DeepSeek Cut AI Training Compute",
+                    "angle": "breakthrough",
+                    "sentences": [
+                        {
+                            "id": "S1",
+                            "text": "How did engineers cut artificial intelligence compute by 80 percent?",
+                            "role": "hook",
+                            "fact_ids": ["F1"],
+                            "connects_to_prev": "Opening line",
+                            "new_information": "Surprising compute reduction",
+                            "visual_intent": {
+                                "main_subject": "server rack microchips",
+                                "action_or_state": "glowing computing nodes",
+                                "setting": "modern datacenter server room",
+                                "queries": [
+                                    "server racks blinking",
+                                    "datacenter interior",
+                                    "computer chip close up",
+                                ],
+                                "on_screen_label": "80% Compute Drop",
+                            },
+                        },
+                        {
+                            "id": "S2",
+                            "text": "Because standard training demands thousands of GPUs running constantly at maximum power.",
+                            "role": "setup",
+                            "fact_ids": [],
+                            "connects_to_prev": "Explains why compute is hard",
+                            "new_information": "Massive hardware requirements",
+                            "visual_intent": {
+                                "main_subject": "graphics processor",
+                                "action_or_state": "fans spinning fast",
+                                "setting": "hardware testing lab",
+                                "queries": ["gpu cooling fans", "hardware lab", "processor motherboard"],
+                                "on_screen_label": "Massive Hardware",
+                            },
+                        },
+                        {
+                            "id": "S3",
+                            "text": "In fact, new compression algorithms shrink key-value cache by 80 percent.",
+                            "role": "turn",
+                            "fact_ids": ["F1"],
+                            "connects_to_prev": "Introduces the technical breakthrough",
+                            "new_information": "Key value compression",
+                            "visual_intent": {
+                                "main_subject": "digital code flow",
+                                "action_or_state": "data streaming across screen",
+                                "setting": "virtual cyber grid",
+                                "queries": ["data stream code", "neural network nodes", "abstract tech grid"],
+                                "on_screen_label": "Cache Compressed",
+                            },
+                        },
+                        {
+                            "id": "S4",
+                            "text": "That means future open models can run on ordinary consumer laptops.",
+                            "role": "resolution",
+                            "fact_ids": [],
+                            "connects_to_prev": "Resolves the ultimate impact",
+                            "new_information": "Accessible consumer deployment",
+                            "visual_intent": {
+                                "main_subject": "laptop computer",
+                                "action_or_state": "typing on keyboard",
+                                "setting": "modern desk workspace",
+                                "queries": ["laptop on desk", "developer coding", "office desk technology"],
+                                "on_screen_label": "Consumer Hardware",
+                            },
+                        },
+                    ],
+                    "cta": "Follow for more cutting edge computing insights.",
+                    "hashtags": "#Shorts #Tech #AI",
+                    "description": "How researchers achieved an 80 percent drop in compute requirements.",
+                }
+            )
+
         # 1. Try Gemini hosted if configured
         if self.settings.llm.gemini.api_key:
             api_key = self.settings.llm.gemini.api_key
@@ -583,7 +729,7 @@ Schema format:
                 "generationConfig": {"temperature": 0.5, "responseMimeType": "application/json"},
             }
             try:
-                with httpx.Client(timeout=6.0) as client:
+                with httpx.Client(timeout=25.0) as client:
                     res = client.post(url, json=payload)
                     if res.status_code == 200:
                         data = res.json()
@@ -612,7 +758,7 @@ Schema format:
                 "temperature": 0.5,
             }
             try:
-                with httpx.Client(timeout=6.0, headers={"Authorization": f"Bearer {groq_key}"}) as client:
+                with httpx.Client(timeout=25.0, headers={"Authorization": f"Bearer {groq_key}"}) as client:
                     res = client.post(url, json=payload)
                     if res.status_code == 200:
                         data = res.json()
@@ -674,7 +820,11 @@ Schema format:
         angle: ProposedAngle | None = None,
     ) -> GeneratedScriptSchema:
         """Deterministic contract-compliant fallback template."""
-        f1 = facts[0] if facts else StructuredFact(claim=topic.title, subject="Engineers", action="revealed", outcome_or_result="key data")
+        f1 = (
+            facts[0]
+            if facts
+            else StructuredFact(claim=topic.title, subject="Engineers", action="revealed", outcome_or_result="key data")
+        )
         sub = f1.subject or "Technology"
         stat = f1.number_with_unit or "the latest data"
 
@@ -751,7 +901,11 @@ Schema format:
             ),
         ]
 
-        title = f"Shocking Truth Behind {topic.title}" if (topic and topic.title) else f"How {sub} Changed Everything in 2026"
+        title = (
+            f"Shocking Truth Behind {topic.title}"
+            if (topic and topic.title)
+            else f"How {sub} Changed Everything in 2026"
+        )
         angle_type = angle.angle_type if angle else "curiosity_gap"
         return GeneratedScriptSchema(
             title=title,
@@ -794,7 +948,9 @@ Schema format:
                 inspiration_ref_ids_json=json.dumps([]),
                 prompt_version="v4.0",
                 cta=script_data.cta,
-                hashtags=script_data.hashtags if isinstance(script_data.hashtags, str) else " ".join(script_data.hashtags),
+                hashtags=script_data.hashtags
+                if isinstance(script_data.hashtags, str)
+                else " ".join(script_data.hashtags),
                 description=script_data.description,
                 facts_used_json=json.dumps(facts_dict),
                 language=self.language,

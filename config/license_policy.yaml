@@ -1,0 +1,129 @@
+# Nova Autopilot v8.0 License Compliance Policy
+# Strict automated enforcement for commercial safety on YouTube / Instagram
+
+version: "1.0"
+last_reviewed: "2026-11-14"
+
+# Licenses explicitly approved for commercial video production
+allowed_licenses:
+  - id: "cc0"
+    name: "Creative Commons Zero (CC0 1.0 Universal)"
+    urls:
+      - "https://creativecommons.org/publicdomain/zero/1.0/"
+      - "http://creativecommons.org/publicdomain/zero/1.0/"
+    commercial_use_ok: true
+    modifications_ok: true
+    attribution_required: false
+    requires_release: false
+
+  - id: "public_domain_mark"
+    name: "Public Domain Mark (PDM 1.0)"
+    urls:
+      - "https://creativecommons.org/publicdomain/mark/1.0/"
+      - "http://creativecommons.org/publicdomain/mark/1.0/"
+    commercial_use_ok: true
+    modifications_ok: true
+    attribution_required: false
+    requires_release: false
+
+  - id: "pd_usgov"
+    name: "United States Government Work (Public Domain)"
+    urls:
+      - "https://www.usa.gov/government-works"
+      - "https://www.nasa.gov/multimedia/guidelines/index.html"
+    commercial_use_ok: true
+    modifications_ok: true
+    attribution_required: true
+    attribution_template: "NASA / {creator}"
+    requires_release: false
+
+  - id: "pixabay_license"
+    name: "Pixabay Content License"
+    urls:
+      - "https://pixabay.com/service/license-summary/"
+    commercial_use_ok: true
+    modifications_ok: true
+    attribution_required: false
+    preferred_attribution: "Image/Video by {creator} from Pixabay"
+    requires_release: false
+
+  - id: "pexels_license"
+    name: "Pexels License"
+    urls:
+      - "https://www.pexels.com/license/"
+    commercial_use_ok: true
+    modifications_ok: true
+    attribution_required: false
+    preferred_attribution: "Video/Photo by {creator} from Pexels"
+    requires_release: false
+
+  - id: "cc_by"
+    name: "Creative Commons Attribution (CC BY 4.0 / 3.0 / 2.0)"
+    urls:
+      - "https://creativecommons.org/licenses/by/4.0/"
+      - "https://creativecommons.org/licenses/by/3.0/"
+      - "https://creativecommons.org/licenses/by/2.0/"
+    commercial_use_ok: true
+    modifications_ok: true
+    attribution_required: true
+    attribution_template: "'{title}' by {creator} ({license_name}) - {landing_page}"
+    requires_release: false
+
+  - id: "natural_earth_pd"
+    name: "Natural Earth Public Domain"
+    urls:
+      - "https://www.naturalearthdata.com/about/terms-of-use/"
+    commercial_use_ok: true
+    modifications_ok: true
+    attribution_required: false
+    requires_release: false
+
+  - id: "procedural_motion"
+    name: "Procedural Data-Driven Motion Graphic (Public Domain / CC0)"
+    urls:
+      - "https://creativecommons.org/publicdomain/zero/1.0/"
+    commercial_use_ok: true
+    modifications_ok: true
+    attribution_required: false
+    requires_release: false
+
+# Licenses strictly prohibited (rejected at ingestion)
+prohibited_licenses:
+  - id: "cc_by_sa"
+    name: "Creative Commons Attribution-ShareAlike (CC BY-SA)"
+    reason: "Viral copyleft restriction: derivative video must be released under identical license, conflicting with commercial platform terms."
+
+  - id: "cc_by_nc"
+    name: "Creative Commons NonCommercial (CC BY-NC)"
+    reason: "Commercial use strictly prohibited: monetization and channel revenue directly violate terms."
+
+  - id: "cc_by_nc_sa"
+    name: "Creative Commons NonCommercial-ShareAlike (CC BY-NC-SA)"
+    reason: "Both NonCommercial and ShareAlike restrictions apply."
+
+  - id: "cc_by_nd"
+    name: "Creative Commons NoDerivatives (CC BY-ND)"
+    reason: "Prohibits adaptations, trims, motion moves, overlays, or video compositing."
+
+  - id: "cc_by_nc_nd"
+    name: "Creative Commons NonCommercial-NoDerivatives (CC BY-NC-ND)"
+    reason: "Strictly non-commercial and prohibits editing/derivatives."
+
+  - id: "all_rights_reserved"
+    name: "All Rights Reserved / Copyrighted"
+    reason: "No permission granted for automated broadcast."
+
+  - id: "editorial_only"
+    name: "Editorial Use Only"
+    reason: "Restricted to educational journalism without commercial endorsement; risky for monetized channels."
+
+  - id: "unknown"
+    name: "Unknown or Missing Rights Metadata"
+    reason: "Cannot legally verify provenance or broadcast clearance."
+
+# Sensitive context rules
+restrictions:
+  disallow_unreleased_identifiable_people_in_news: true
+  disallow_trademark_prominence: true
+  fail_render_without_license_proof: true
+  min_attribution_credits_in_description: true
