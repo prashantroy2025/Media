@@ -26,7 +26,8 @@ class ArxivAICollector(BaseCollector):
 
     def fetch(self) -> list[RawTopic]:
         topics: list[RawTopic] = []
-        headers = {"User-Agent": "NovaStudio/3.0 (research aggregator; contact: prashantroy.dev@gmail.com)"}
+        contact_email = os.getenv("CONTACT_EMAIL", "contact@example.com")
+        headers = {"User-Agent": f"NovaStudio/3.0 (research aggregator; contact: {contact_email})"}
 
         urls_to_try = list(self.feed_urls)
 

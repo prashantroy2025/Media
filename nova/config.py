@@ -8,15 +8,18 @@ import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-# Load environment variables from .env
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env in project root, with fallback to cwd
+_env_path = PROJECT_ROOT / ".env"
+if _env_path.exists():
+    load_dotenv(dotenv_path=_env_path, override=False)
+load_dotenv(override=False)
 
 # Ensure standard macOS Homebrew and local binary paths are in PATH
 for extra_path in ["/opt/homebrew/bin", "/usr/local/bin"]:
     if extra_path not in os.environ.get("PATH", ""):
         os.environ["PATH"] = f"{extra_path}:{os.environ.get('PATH', '')}"
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class AppConfig(BaseModel):
@@ -427,6 +430,15 @@ def load_config(config_path: str | Path | None = None) -> NovaSettings:
 
     settings = NovaSettings(**raw_data)
 
+    # Resolve and validate GOOGLE_APPLICATION_CREDENTIALS if present
+    gac = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if gac:
+        gac_p = Path(gac)
+        if not gac_p.is_absolute():
+            abs_p = PROJECT_ROOT / gac_p
+            if abs_p.exists():
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(abs_p)
+
     # Inject environment variables
     if os.getenv("NOVA_DB_PATH"):
         settings.app.db_path = os.getenv("NOVA_DB_PATH")
@@ -436,9 +448,10 @@ def load_config(config_path: str | Path | None = None) -> NovaSettings:
         settings.llm.ollama.host = os.getenv("OLLAMA_HOST")
     if os.getenv("GROQ_API_KEY"):
         settings.llm.groq.api_key = os.getenv("GROQ_API_KEY")
-    if os.getenv("GEMINI_API_KEY"):
-        settings.llm.gemini.api_key = os.getenv("GEMINI_API_KEY")
-        settings.gemini.api_key = os.getenv("GEMINI_API_KEY")
+    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if gemini_key:
+        settings.llm.gemini.api_key = gemini_key
+        settings.gemini.api_key = gemini_key
     if os.getenv("HF_TOKEN"):
         settings.llm.huggingface.api_token = os.getenv("HF_TOKEN")
     if os.getenv("INSTAGRAM_ACCESS_TOKEN"):

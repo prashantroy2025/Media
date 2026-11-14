@@ -18,9 +18,9 @@ class EDGARCollector(BaseCollector):
         self.feed_url = "https://www.sec.gov/news/pressreleases.rss"
 
     def fetch(self) -> list[RawTopic]:
-        contact_email = os.getenv("CONTACT_EMAIL", "prashantroy.dev@gmail.com")
+        contact_email = os.getenv("CONTACT_EMAIL", "contact@example.com")
         headers = {
-            "User-Agent": f"NovaStudio/3.0 (Prashant Roy; contact: {contact_email})",
+            "User-Agent": f"NovaStudio/3.0 (research aggregator; contact: {contact_email})",
             "Accept-Encoding": "gzip, deflate",
             "Host": "www.sec.gov",
         }

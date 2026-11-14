@@ -3,6 +3,16 @@ Built for Apple Silicon M2 (macOS).
 """
 
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Ensure environment variables are loaded immediately from project root .env
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_env_file = _PROJECT_ROOT / ".env"
+if _env_file.exists():
+    load_dotenv(dotenv_path=_env_file, override=False)
+else:
+    load_dotenv(override=False)
 
 if "/opt/homebrew/bin" not in os.environ.get("PATH", ""):
     os.environ["PATH"] = f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"

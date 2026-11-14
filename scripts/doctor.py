@@ -110,7 +110,7 @@ def run_doctor():
         try:
             r = requests.get(f"https://api.nasa.gov/planetary/apod?api_key={key}", timeout=4)
             if r.status_code == 200:
-                return True, f"NASA APOD API working (Key: {key[:6]}...)"
+                return True, "NASA APOD API working (Key configured)"
             elif r.status_code == 429:
                 return False, "NASA key rate limited (HTTP 429)."
             return False, f"NASA API returned HTTP {r.status_code}"
@@ -234,12 +234,44 @@ def run_doctor():
     # 11. Optional Hosted LLM (Groq / Gemini)
     def check_hosted_llm():
         groq_key = os.getenv("GROQ_API_KEY")
-        gemini_key = os.getenv("GEMINI_API_KEY")
+        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if groq_key:
             return True, "Groq API key configured (llama-3.3-70b-versatile available)"
         if gemini_key:
-            return True, "Gemini API key configured (gemini-2.0-flash available)"
+            return True, "Gemini API key configured (gemini-3.8-flash available)"
         return False, "No hosted LLM key in .env. Optional: GEMINI_API_KEY=... or GROQ_API_KEY=..."
+
+    # 11b. Google Cloud & Service Account Security
+    def check_google_cloud():
+        import json
+        gac = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        secret_file = settings.resolve_path(settings.youtube.client_secret_file)
+        details = []
+
+        if gac:
+            gac_path = Path(gac)
+            if not gac_path.is_absolute():
+                gac_path = settings.resolve_path(gac_path)
+            if gac_path.exists():
+                try:
+                    with open(gac_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    c_type = data.get("type", "credentials")
+                    details.append(f"Service account file verified ({c_type})")
+                except Exception as e:
+                    return False, f"Invalid JSON in GOOGLE_APPLICATION_CREDENTIALS: {e}"
+            else:
+                return False, f"Credentials file not found at: {gac}. Place service-account.json in credentials/"
+
+        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if gemini_key:
+            details.append("Gemini API key configured")
+        if secret_file.exists():
+            details.append("YouTube OAuth client secret ready")
+
+        if details:
+            return True, " & ".join(details)
+        return False, "No Google credentials configured. Optional: add GEMINI_API_KEY or GOOGLE_APPLICATION_CREDENTIALS"
 
     # 12. Subtitle Typography Font
     def check_font():
@@ -310,6 +342,7 @@ def run_doctor():
         ("Topic Safety Policy", check_topic_policy),
         ("Render & HW Encoder", check_render_engine),
         ("Optional Hosted LLM", check_hosted_llm),
+        ("Google Cloud & Auth", check_google_cloud),
         ("Subtitle Typography", check_font),
         ("Music & Sound Effects", check_audio_assets),
         ("YouTube OAuth Auth", check_youtube),

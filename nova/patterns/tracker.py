@@ -39,7 +39,7 @@ class ReferenceChannelTracker:
         self.outlier_threshold = getattr(settings.research, "outlier_threshold", 3.0)
         self.units_used_today = 0
         self.last_quota_reset = datetime.now(UTC).date()
-        self.api_key = os.getenv("YOUTUBE_API_KEY", "")
+        self.api_key = os.getenv("YOUTUBE_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
 
     def _check_and_increment_quota(self, units: int = 1) -> bool:
         """Enforces daily quota budget."""

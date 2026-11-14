@@ -134,7 +134,7 @@ class GeminiClient:
 
     def __init__(self, settings: NovaSettings | None = None):
         self.settings = settings or load_config()
-        self.api_key = os.getenv("GEMINI_API_KEY", "") or getattr(self.settings.gemini, "api_key", "")
+        self.api_key = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "") or getattr(self.settings.gemini, "api_key", "")
         self.enabled = bool(getattr(self.settings.gemini, "enabled", True) and self.api_key)
         self.text_model = getattr(self.settings.gemini, "text_model", "gemini-3.8-flash")
         self.image_model = getattr(self.settings.gemini, "image_model", "gemini-3.1-flash-image")
@@ -153,7 +153,10 @@ class GeminiClient:
     def _execute_request(self, endpoint: str, payload: dict[str, Any], retries: int = 2) -> dict[str, Any]:
         """Executes REST request to Gemini API with exponential backoff and safe exception logging (never logging API key)."""
         if not self.is_available():
-            raise RuntimeError("Gemini API is not enabled or GEMINI_API_KEY is not configured.")
+            raise RuntimeError(
+                "Gemini API is not enabled or GEMINI_API_KEY is not configured. "
+                "Please configure GEMINI_API_KEY in your local .env file."
+            )
 
         import requests
 

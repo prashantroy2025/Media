@@ -74,6 +74,70 @@
 
 ---
 
+## 🛠️ Installation & Setup Guide
+
+Follow these steps to set up Nova Autopilot on your local machine:
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/prashantroy2025/Media.git
+cd Media/nova-autopilot # or cd nova-autopilot
+```
+
+### 2. Create a Python virtual environment
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install requirements
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Copy `.env.example` to `.env`
+```bash
+cp .env.example .env
+```
+> [!IMPORTANT]
+> **Credential Security**:
+> - `.env` is private, local-only, and strictly ignored by Git (`.gitignore`).
+> - `.env.example` contains placeholders only and is the **only** template file committed to GitHub.
+> - Never commit `.env`, service-account JSONs, private keys, or API tokens to GitHub.
+
+### 5. Add personal API credentials
+Open `.env` in your editor and configure your credentials:
+```bash
+# LLM Providers (Ollama runs locally for free; cloud LLMs optional)
+GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
+
+# Visual & Audio Providers (Free tiers available)
+NASA_API_KEY=DEMO_KEY
+PEXELS_API_KEY=your_pexels_api_key_here
+PIXABAY_API_KEY=your_pixabay_api_key_here
+```
+
+### 6. Configure Google Cloud credentials (if required)
+For YouTube auto-publishing or Google Cloud integrations:
+1. Download your OAuth 2.0 Client Secret JSON from Google Cloud Console.
+2. Save it locally to `credentials/client_secret.json`.
+3. If using a Google Cloud Service Account, place your JSON key at `credentials/service-account.json` and ensure `.env` specifies:
+   ```bash
+   GOOGLE_APPLICATION_CREDENTIALS=./credentials/service-account.json
+   ```
+4. All files in `credentials/` and `service-account*.json` are automatically ignored by Git.
+
+### 7. Run Nova Autopilot
+Run the doctor tool to verify your environment and API credentials:
+```bash
+python -m nova doctor
+# or
+.venv/bin/python scripts/doctor.py
+```
+
+---
+
 ## ⚡ Quick Start in 3 Steps
 
 ### Step 1: System Health Check (Doctor)

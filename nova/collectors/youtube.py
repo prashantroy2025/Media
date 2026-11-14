@@ -14,11 +14,11 @@ class YouTubeTrendingCollector(BaseCollector):
         super().__init__(name="youtube_trending", timeout_seconds=timeout_seconds)
         self.region_code = region_code
         self.category_id = category_id
-        self.api_key = os.getenv("YOUTUBE_API_KEY")
+        self.api_key = os.getenv("YOUTUBE_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
     def fetch(self) -> list[RawTopic]:
         if not self.api_key:
-            logger.info("YOUTUBE_API_KEY not configured in .env; skipping YouTube trending collector.")
+            logger.info("YOUTUBE_API_KEY / GOOGLE_API_KEY not configured in .env; skipping YouTube trending collector.")
             return []
 
         youtube = build("youtube", "v3", developerKey=self.api_key)
