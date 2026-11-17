@@ -1,6 +1,6 @@
-# Nova Autopilot v8.0: Architecture & System Design 📐
+# Nova Autopilot v9.0: Architecture & System Design 📐
 
-> Technical specification, component diagrams, database schema, and motion design engine for Nova Autopilot v8.0.
+> Technical specification, component diagrams, database schema, creator presets, motion design engine, and autonomous video critic for Nova Autopilot v9.0.
 
 ---
 
@@ -30,8 +30,10 @@ flowchart TD
         SelectedTopic --> ScheduleEngine[US Prime-Time Scheduling Engine]
     end
 
-    subgraph Intelligence ["3. Fact Grounding & Scriptwriting Engine"]
+    subgraph Intelligence ["3. Fact Grounding, Presets & Scriptwriting Engine"]
         SelectedTopic --> SW[Scriptwriter Engine]
+        Presets[10 Creator Presets: nova.presets] --> SW
+        RefEngine[Reference Intelligence: nova.reference_engine] --> Presets
         Facts[Structured Fact Extractor: Step A] --> SW
         Persona[Persona Guide: persona.md + Niche Tweaks] --> SW
         LLM[Local Ollama llama3.2:3b / Groq / Gemini] --> SW
@@ -50,40 +52,44 @@ flowchart TD
         WhisperAlign --> WordEvents[Word Timestamp Dialogue Events]
     end
 
-    subgraph TimelineShots ["5. Multi-Shot Timeline & Visual Matching"]
-        ValidScript --> TLBuilder[TimelineBuilder: 1.5s - 3.0s Beats]
+    subgraph TimelineShots ["5. Multi-Shot Timeline & Visual Matching Engine"]
+        ValidScript --> TLBuilder[TimelineBuilder: Beat-Level Cadence]
         TLBuilder --> VisualManager[VisualsManager: Multi-Source Engine]
         VisualManager --> NASA_Media[NASA Image & Video Library]
         VisualManager --> Wiki_Media[Wikimedia Commons API]
         VisualManager --> Stock[Pexels & Pixabay APIs]
+        VisualManager --> AIVideo[AI Video Framework: Veo / Runway / Luma / Kling]
         VisualManager --> ShotPlanner[open_clip Semantic Relevance Scorer]
         ShotPlanner --> ShotNorm[Isolated Shot Normalization: 30fps CFR yuv420p]
     end
 
-    subgraph MotionSound ["6. Cinematic Motion Design & Sound Design"]
-        WordEvents --> MotionBuilder[MotionPlanBuilder: Timed Motion Events]
+    subgraph MotionSound ["6. Cinematic Motion Design & Sound Design Director"]
+        WordEvents --> MotionBuilder[MotionPlanBuilder: Infographics, Counters, Markers]
         MotionBuilder --> EasingEngine[Pillow 2x Supersampled Easing Engine]
         EasingEngine --> TransparentMOV[Transparent RGBA Overlay Stream: .mov]
-        VoiceAudio --> AudioMaster[EBU R128 Loudness Normalizer: -14 LUFS]
+        WordEvents --> SoundDirector[SoundDesignDirector: Contextual Procedural SFX]
+        SoundDirector --> AudioMaster[EBU R128 Loudness Normalizer: -14 LUFS]
         MusicAssets[assets/music/] --> AudioMaster
         SFXAssets[assets/sfx/] --> AudioMaster
     end
 
-    subgraph AssemblyQuality ["7. Video Assembly & Scorecard Audit"]
-        ShotNorm --> ConcatDemux[FFmpeg Concat Demuxer]
-        ConcatDemux --> ColorGrade[Color Grading: eq + unsharp + vignette]
-        TransparentMOV --> Compositor[FFmpeg Overlay Composition Pass]
+    subgraph AssemblyQuality ["7. Video Assembly, Scorecard & Autonomous Critic"]
+        ShotNorm --> Transitions[TransitionEngine: Hardware xfade Crossfades/Whips/Zooms]
+        Transitions --> ColorGrade[Color Grading: LUT / Preset eq Filter]
+        TransparentMOV --> Compositor[FFmpeg Multi-Pass Compositor]
         ColorGrade --> Compositor
         AudioMaster --> Compositor
         Compositor --> FinalMP4[Final Rendered Short Video: output/*.mp4]
         FinalMP4 --> QualityGate[14-Point Quality Gate]
         FinalMP4 --> Auditor[25-Point Empirical Scorecard Audit: >= 90%]
-        Auditor --> DB
+        FinalMP4 --> Critic[Autonomous Video Critic: 10-Point Scorecard & QA Report]
+        Critic --> CriticHTML[output/critic_report_id.html & json]
         Auditor --> ScorecardHTML[output/audit_id.html & json]
     end
 
     subgraph Distribution ["8. Review Studio & Manual Approval Guard"]
         FinalMP4 --> ReviewUI[FastAPI Review Studio :8765]
+        CriticHTML --> ReviewUI
         ScorecardHTML --> ReviewUI
         DB -->|Tier B Videos| ManualGuard[Manual Checklist Approval Required]
         ManualGuard -->|User Signs 5-Point Checklist| ApprovedForPublish[Publish Queue]

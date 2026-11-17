@@ -122,9 +122,14 @@
                         {{ sc.pass_rate_pct }}% ({{ sc.passed_checks }}/{{ sc.total_checks }} PASS)
                     </span>
                 </h3>
-                <a href="/audit/{{ selected_video.id }}" target="_blank" class="btn btn-sm btn-secondary">
-                    📊 View Full HTML Audit Report
-                </a>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <a href="/critic/{{ selected_video.id }}" target="_blank" class="btn btn-sm btn-secondary" style="border-color: #38bdf8; color: #38bdf8;">
+                        🤖 View Critic QA Report
+                    </a>
+                    <a href="/audit/{{ selected_video.id }}" target="_blank" class="btn btn-sm btn-secondary">
+                        📊 View Scorecard Audit
+                    </a>
+                </div>
             </div>
             <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
                 Target: &ge; 90.0% Pass Rate across Script/Facts, Voice, Subtitles, Visual Cadence, and Technical Compliance.

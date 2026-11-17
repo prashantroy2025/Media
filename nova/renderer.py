@@ -79,6 +79,11 @@ class VideoRenderer:
         motion_overlay_stream_path: Path | None = None,
         timeline_plan: Any | None = None,
         apply_color_grade: bool = True,
+        preset: Any | None = None,
+        transition_style: str = "cut",
+        transition_duration: float = 0.3,
+        custom_color_grade: str | None = None,
+        color_match: bool = False,
     ) -> Path:
         """Assembles normalized shot clips, mixes master audio, burns in subtitles, and produces final MP4."""
         output_video_path.parent.mkdir(parents=True, exist_ok=True)
@@ -86,8 +91,33 @@ class VideoRenderer:
         render_log_path = output_video_path.with_name("render_log.json")
         commands_log: list[dict[str, Any]] = []
 
-        # Step 1: Concatenate scene video clips using concat demuxer (lossless & instant)
-        self._concat_shots_demuxer(scene_video_paths, temp_concat_path, commands_log)
+        # Determine exact target duration from audio to ensure video stream duration == audio duration within 0.05s
+        from nova.visuals import get_media_duration
+        true_audio_dur = get_media_duration(audio_path)
+        target_dur = round(true_audio_dur, 3) if true_audio_dur > 0.5 else round(total_duration, 3)
+
+        # Step 1: Concatenate scene video clips using TransitionEngine or concat demuxer
+        active_trans_style = getattr(preset, "transition_style", transition_style) or transition_style
+        active_trans_dur = getattr(preset, "transition_duration", transition_duration) or transition_duration
+
+        if active_trans_style != "cut" and len(scene_video_paths) > 1:
+            try:
+                from nova.transitions import TransitionEngine
+                te = TransitionEngine(encoder=self.encoder, fps=self.settings.video.fps)
+                te.render_transitions(
+                    shot_paths=scene_video_paths,
+                    output_path=temp_concat_path,
+                    transition_style=active_trans_style,
+                    transition_duration=active_trans_dur,
+                    target_total_duration=target_dur,
+                    color_match=color_match,
+                )
+                commands_log.append({"stage": "transitions", "style": active_trans_style, "shots": len(scene_video_paths)})
+            except Exception as te_err:
+                logger.warning(f"TransitionEngine failed ({te_err}); falling back to concat demuxer.")
+                self._concat_shots_demuxer(scene_video_paths, temp_concat_path, commands_log)
+        else:
+            self._concat_shots_demuxer(scene_video_paths, temp_concat_path, commands_log)
 
         # Step 2: Configure encoder
         encoder_args = ["-c:v", self.encoder]
@@ -96,15 +126,13 @@ class VideoRenderer:
         elif self.encoder == "h264_videotoolbox":
             encoder_args.extend(["-b:v", self.settings.video.bitrate, "-profile:v", "high"])
 
-        # Determine exact target duration from audio to ensure video stream duration == audio duration within 0.05s
-        from nova.visuals import get_media_duration
-
-        true_audio_dur = get_media_duration(audio_path)
-        target_dur = round(true_audio_dur, 3) if true_audio_dur > 0.5 else round(total_duration, 3)
-
         # Step 3: Composite final video + audio + subtitles + motion design
+        chosen_grade = custom_color_grade or getattr(preset, "color_grade", None)
+        if not chosen_grade:
+            chosen_grade = "eq=contrast=1.06:brightness=0.01:saturation=1.08,unsharp=3:3:0.4,vignette=PI/5"
+
         grade_prefix = (
-            "[0:v]eq=contrast=1.06:brightness=0.01:saturation=1.08,unsharp=3:3:0.4,vignette=PI/5[graded];"
+            f"[0:v]{chosen_grade}[graded];"
             if apply_color_grade
             else "[0:v]copy[graded];"
         )

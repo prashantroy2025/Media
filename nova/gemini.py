@@ -127,6 +127,36 @@ class GeminiUsageTracker:
         return self._load_data()
 
 
+def _parse_gemini_keys(*sources: Any) -> list[str]:
+    """Extracts, cleans, and deduplicates Gemini API keys from multiple sources."""
+    keys: list[str] = []
+    seen: set[str] = set()
+    for src in sources:
+        if not src:
+            continue
+        if isinstance(src, (list, tuple, set)):
+            raw_items = list(src)
+        elif isinstance(src, str):
+            raw_items = re.split(r"[,;\n\r\t]+", src)
+        else:
+            raw_items = [str(src)]
+        for item in raw_items:
+            k = str(item).strip().strip("\"'").strip()
+            if k and k not in seen:
+                seen.add(k)
+                keys.append(k)
+    return keys
+
+
+def _mask_api_key(key: str) -> str:
+    """Safely masks an API key for logs (never leaking full credentials)."""
+    if not key:
+        return "<none>"
+    if len(key) <= 8:
+        return "***"
+    return f"{key[:4]}...{key[-4:]}"
+
+
 class GeminiClient:
     """Production client for Google Gemini Developer API with strict cost, safety, and fallback guarantees."""
 
@@ -134,24 +164,121 @@ class GeminiClient:
 
     def __init__(self, settings: NovaSettings | None = None):
         self.settings = settings or load_config()
-        self.api_key = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "") or getattr(self.settings.gemini, "api_key", "")
-        self.enabled = bool(getattr(self.settings.gemini, "enabled", True) and self.api_key)
-        self.text_model = getattr(self.settings.gemini, "text_model", "gemini-3.8-flash")
+
+        # Determine raw key source
+        if settings is not None and getattr(self.settings.gemini, "api_key", None) is None:
+            raw_source = None
+        else:
+            raw_source = (
+                getattr(self.settings.gemini, "api_key", None)
+                or getattr(self.settings.gemini, "api_keys", None)
+                or os.getenv("GEMINI_API_KEY", "")
+                or os.getenv("GEMINI_API_KEYS", "")
+                or os.getenv("GOOGLE_API_KEY", "")
+            )
+
+        self._api_keys: list[str] = _parse_gemini_keys(raw_source)
+        self._api_key: str = self._api_keys[0] if self._api_keys else ""
+        self._current_key_idx: int = 0
+        self._exhausted_keys: set[str] = set()
+        self._key_cooldown: dict[str, float] = {}
+
+        self.enabled = bool(getattr(self.settings.gemini, "enabled", True) and bool(self._api_keys or self._api_key))
+        self.text_model = getattr(self.settings.gemini, "text_model", None) or getattr(self.settings.gemini, "model", None) or "gemini-3.5-flash-lite"
+        if self.text_model in ("gemini-2.5-flash", "gemini-3.8-flash"):
+            self.text_model = "gemini-3.5-flash-lite"
         self.image_model = getattr(self.settings.gemini, "image_model", "gemini-3.1-flash-image")
         self.veo_enabled = bool(getattr(self.settings.gemini, "veo_enabled", False))
         self.daily_budget = float(getattr(self.settings.gemini, "daily_budget", 5.0))
         self.timeout = int(getattr(self.settings.gemini, "timeout_seconds", 30))
+        self._image_quota_exceeded = False
 
         cache_dir = self.settings.resolve_path(self.settings.app.cache_dir)
         self.tracker = GeminiUsageTracker(cache_dir / "gemini_usage.json")
         self.ai_cache_dir = cache_dir / "ai"
         self.ai_cache_dir.mkdir(parents=True, exist_ok=True)
 
+    @property
+    def api_key(self) -> str:
+        """Returns the primary or currently active API key."""
+        if not self._api_keys:
+            return self._api_key or ""
+        now = time.time()
+        available = [
+            k for k in self._api_keys
+            if k not in self._exhausted_keys and self._key_cooldown.get(k, 0.0) <= now
+        ]
+        if available:
+            idx = self._current_key_idx % len(available)
+            return available[idx]
+        return self._api_keys[0]
+
+    @api_key.setter
+    def api_key(self, val: str | None) -> None:
+        self._api_key = str(val or "")
+        self._api_keys = _parse_gemini_keys(val)
+        self._current_key_idx = 0
+        self._exhausted_keys.clear()
+        self._key_cooldown.clear()
+        self.enabled = bool(getattr(self.settings.gemini, "enabled", True) and bool(self._api_keys))
+
+    @property
+    def api_keys(self) -> list[str]:
+        """Returns the full list of configured API keys in the rotation pool."""
+        return list(self._api_keys)
+
+    @api_keys.setter
+    def api_keys(self, val: Any) -> None:
+        self._api_keys = _parse_gemini_keys(val)
+        self._current_key_idx = 0
+        self._exhausted_keys.clear()
+        self._key_cooldown.clear()
+        self._api_key = self._api_keys[0] if self._api_keys else ""
+        self.enabled = bool(getattr(self.settings.gemini, "enabled", True) and bool(self._api_keys))
+
     def is_available(self) -> bool:
-        return self.enabled and bool(self.api_key)
+        return bool(self.enabled and bool(self._api_keys or self._api_key))
+
+    def get_active_api_key(self, advance: bool = False) -> str:
+        """Returns an available healthy API key from the pool.
+
+        Args:
+            advance: If True, advances round-robin index for subsequent requests.
+        """
+        if not self._api_keys:
+            return self._api_key or ""
+
+        now = time.time()
+        expired = [k for k, exp in self._key_cooldown.items() if exp <= now]
+        for k in expired:
+            del self._key_cooldown[k]
+
+        available = [
+            k for k in self._api_keys
+            if k not in self._exhausted_keys and k not in self._key_cooldown
+        ]
+
+        if available:
+            idx = self._current_key_idx % len(available)
+            selected = available[idx]
+            if advance:
+                self._current_key_idx = (self._current_key_idx + 1) % len(available)
+            return selected
+
+        # If all healthy keys are in cooldown, pick the one cooling down earliest
+        non_exhausted = [k for k in self._api_keys if k not in self._exhausted_keys]
+        if non_exhausted:
+            non_exhausted.sort(key=lambda k: self._key_cooldown.get(k, float("inf")))
+            selected = non_exhausted[0]
+            if advance:
+                self._current_key_idx = (self._current_key_idx + 1) % len(non_exhausted)
+            return selected
+
+        return self._api_keys[0]
 
     def _execute_request(self, endpoint: str, payload: dict[str, Any], retries: int = 2) -> dict[str, Any]:
-        """Executes REST request to Gemini API with exponential backoff and safe exception logging (never logging API key)."""
+        """Executes REST request to Gemini API with automatic key failover, round-robin load distribution,
+        exponential backoff, and safe masked logging (never logging raw API keys)."""
         if not self.is_available():
             raise RuntimeError(
                 "Gemini API is not enabled or GEMINI_API_KEY is not configured. "
@@ -160,34 +287,106 @@ class GeminiClient:
 
         import requests
 
-        url = f"{self.BASE_URL}/{endpoint}?key={self.api_key}"
-        headers = {"Content-Type": "application/json"}
-
+        total_keys = len(self._api_keys)
+        max_attempts = max(retries + 1, total_keys * 2)
         delay = 1.0
-        for attempt in range(retries + 1):
+        active_endpoint = endpoint
+        last_error_msg = ""
+        tried_keys_in_call: set[str] = set()
+
+        for attempt in range(max_attempts):
+            current_key = self.get_active_api_key(advance=False)
+            if current_key in tried_keys_in_call:
+                untried = [
+                    k for k in self._api_keys
+                    if k not in tried_keys_in_call and k not in self._exhausted_keys
+                ]
+                if untried:
+                    current_key = untried[0]
+
+            if not current_key:
+                break
+
+            tried_keys_in_call.add(current_key)
+            masked = _mask_api_key(current_key)
+            url = f"{self.BASE_URL}/{active_endpoint}?key={current_key}"
+            headers = {"Content-Type": "application/json"}
+
             try:
                 res = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
                 if res.status_code == 200:
+                    self.get_active_api_key(advance=True)
                     return res.json()
+
                 elif res.status_code == 429:
-                    logger.warning(f"Gemini API rate limit (429), retrying in {delay:.1f}s...")
+                    is_quota = "quota" in res.text.lower()
+                    if is_quota:
+                        logger.warning(f"Gemini API key [{masked}] quota exceeded (429).")
+                        self._exhausted_keys.add(current_key)
+                    else:
+                        logger.warning(f"Gemini API key [{masked}] rate limited (429). Cooling down.")
+                        self._key_cooldown[current_key] = time.time() + 30.0
+
+                    if len(self._exhausted_keys) >= total_keys:
+                        logger.warning("All Gemini API keys in pool have exceeded quota (429). Bypassing further retries.")
+                        self._image_quota_exceeded = True
+                        raise RuntimeError(f"Gemini API quota exceeded: {res.text[:120]}")
+
+                    available_alternatives = [
+                        k for k in self._api_keys
+                        if k not in self._exhausted_keys and k not in tried_keys_in_call
+                    ]
+                    if available_alternatives:
+                        logger.info(
+                            f"Failover: switching from Gemini key [{masked}] to next available key in pool "
+                            f"({len(available_alternatives)} remaining)..."
+                        )
+                        continue
+
                     time.sleep(delay)
                     delay *= 2.0
+                    tried_keys_in_call.clear()
+
+                elif res.status_code in (400, 401, 403):
+                    err_text = res.text[:140]
+                    logger.warning(f"Gemini API key [{masked}] returned {res.status_code}: {err_text}")
+                    self._exhausted_keys.add(current_key)
+
+                    if len(self._exhausted_keys) >= total_keys:
+                        raise RuntimeError(f"All Gemini API keys failed ({res.status_code}): {err_text}")
+
+                    logger.info(f"Gemini key [{masked}] rejected. Failing over to next key in pool...")
+                    continue
+
+                elif res.status_code in (404, 503) and "generateContent" in active_endpoint:
+                    for fallback_model in ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"]:
+                        if fallback_model not in active_endpoint:
+                            logger.info(f"Gemini {active_endpoint} returned {res.status_code}; falling back to {fallback_model}")
+                            active_endpoint = f"models/{fallback_model}:generateContent"
+                            break
+                    time.sleep(0.5)
+
                 elif 500 <= res.status_code < 600:
-                    logger.warning(f"Gemini API server error ({res.status_code}), retrying in {delay:.1f}s...")
+                    logger.warning(f"Gemini API server error ({res.status_code}) on key [{masked}], retrying in {delay:.1f}s...")
                     time.sleep(delay)
                     delay *= 2.0
+
                 else:
                     err_msg = res.text[:200]
+                    last_error_msg = f"Gemini API error {res.status_code}: {err_msg}"
                     logger.warning(f"Gemini API returned error {res.status_code}: {err_msg}")
                     raise RuntimeError(f"Gemini API error {res.status_code}")
+
             except requests.RequestException as re:
-                if attempt == retries:
-                    raise RuntimeError(f"Gemini API request failed after {retries} retries: {re}")
+                last_error_msg = str(re)
+                logger.warning(f"Gemini API request error with key [{masked}]: {re}")
+                self._key_cooldown[current_key] = time.time() + 15.0
+                if attempt == max_attempts - 1:
+                    raise RuntimeError(f"Gemini API request failed after {max_attempts} attempts: {re}")
                 time.sleep(delay)
                 delay *= 2.0
 
-        raise RuntimeError("Gemini API request failed exhausted retries.")
+        raise RuntimeError(f"Gemini API request failed exhausted retries. Last error: {last_error_msg}")
 
     # -------------------------------------------------------------------------
     # PHASE 2: BEAT-LEVEL SHOT PLANNING
@@ -272,6 +471,10 @@ class GeminiClient:
                 res = self._execute_request(f"models/{self.text_model}:generateContent", payload)
                 text_content = res.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                 parsed_json = json.loads(text_content)
+                if isinstance(parsed_json, list):
+                    parsed_json = {"beats": parsed_json}
+                elif isinstance(parsed_json, dict) and "beats" not in parsed_json and "shot_beats" in parsed_json:
+                    parsed_json["beats"] = parsed_json["shot_beats"]
                 validated = GeminiShotPlanResponse(**parsed_json)
 
                 # Grounded facts verification: check that model did not hallucinate numbers
@@ -356,7 +559,7 @@ class GeminiClient:
         seed_offset: int = 0,
     ) -> list[Path]:
         """Generates 2 image candidates adhering to style bible and negative prompts."""
-        if not self.is_available():
+        if not self.is_available() or getattr(self, "_image_quota_exceeded", False):
             return []
 
         cost_est = count * 0.035

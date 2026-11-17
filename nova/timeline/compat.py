@@ -1,23 +1,31 @@
-"""Timeline and Segment Engine for Nova Autopilot v7.0.
+"""Backward compatibility layer bridging legacy TimelinePlan to UnifiedProject.
 
-Guarantees 100% continuous footage coverage with zero gaps, zero freezes,
-and dynamic 2-4 second shot cadence across every spoken sentence.
+Guarantees 100% test suite and pipeline compatibility with v7/v8/v9 callers
+while enabling bidirectional conversion to the v9.3 Unified Creative Timeline.
 """
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass, field
 import json
 import math
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from nova.beats import Beat, BeatPlanner, VideoShotPlan
+from nova.timeline.schema import (
+    LayerTransform,
+    LayerType,
+    Scene,
+    Timecode,
+    UnifiedProject,
+    VideoLayer,
+)
 
 
 @dataclass
 class ShotPlan:
-    """A single continuous visual shot within a sentence segment."""
+    """A single continuous visual shot within a sentence segment (Legacy schema)."""
 
     shot_index: int
     sentence_index: int
@@ -27,12 +35,12 @@ class ShotPlan:
     end_time: float
     duration: float
     query: str
-    shot_type: str = "medium"  # close_up, wide, medium, macro
+    shot_type: str = "medium"
     on_screen_label: str | None = None
     chosen_asset_id: str = ""
     provider: str = ""
-    media_type: str = "video"  # video, image, card
-    fit_method: str = "trim"  # trim, loop_pingpong, slow_down, ken_burns, card
+    media_type: str = "video"
+    fit_method: str = "trim"
     asset_file: str = ""
     normalized_shot_file: str = ""
     relevance_score: float = 100.0
@@ -67,6 +75,77 @@ class TimelinePlan:
         output_path.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
         return output_path
 
+    def to_unified_project(self) -> UnifiedProject:
+        """Converts legacy TimelinePlan into a validated UnifiedProject."""
+        total_frames = Timecode.seconds_to_frames(self.total_duration, self.fps)
+        scenes: list[Scene] = []
+
+        cur_frame = 0
+        for s in self.shots:
+            s_frames = Timecode.seconds_to_frames(s.duration, self.fps)
+            e_frame = cur_frame + s_frames
+
+            # Map legacy media_type to layer
+            layer_t = LayerType.FOOTAGE.value
+            comp_type = ""
+            combined_text = f"{s.query.lower()} {s.sentence_text.lower()}"
+            if any(k in combined_text for k in ("starfield", "sparse star", "stars passing", "space collision", "deep space")):
+                comp_type = "starfield"
+                layer_t = LayerType.COMPOSITION.value
+            elif s.media_type == "image":
+                layer_t = LayerType.IMAGE.value
+            elif s.media_type == "procedural_card":
+                layer_t = LayerType.MOTION_GRAPHIC.value
+
+            layer = VideoLayer(
+                layer_id=f"layer_{s.shot_index}_0",
+                name=f"Visual Asset Shot #{s.shot_index}",
+                layer_type=layer_t,
+                z_index=0,
+                source_path=s.normalized_shot_file or s.asset_file or None,
+                transform=LayerTransform(),
+                clip_in_frame=0,
+                clip_out_frame=s_frames,
+                metadata=s.metadata,
+            )
+
+            scenes.append(
+                Scene(
+                    scene_id=f"scene_{s.shot_index}_{s.sentence_id}",
+                    scene_index=s.shot_index,
+                    name=f"Scene {s.shot_index}: {s.sentence_text[:30]}",
+                    start_frame=cur_frame,
+                    end_frame=e_frame,
+                    duration_frames=s_frames,
+                    duration_seconds=s.duration,
+                    narration_text=s.sentence_text,
+                    visual_intent=s.query,
+                    video_layers=[layer],
+                    composition_type=comp_type,
+                    rendered_clip_path=s.normalized_shot_file or None,
+                    status="rendered" if s.normalized_shot_file else "draft",
+                    metadata={
+                        "legacy_shot": asdict(s),
+                        "shot_type": s.shot_type,
+                        "niche": self.niche,
+                    },
+                )
+            )
+            cur_frame = e_frame
+
+        return UnifiedProject(
+            project_id=f"proj_{self.script_id}",
+            title=f"Video #{self.script_id} Production Project",
+            schema_version="9.3",
+            fps=self.fps,
+            width=1080,
+            height=1920,
+            duration_frames=cur_frame,
+            duration_seconds=self.total_duration,
+            scenes=scenes,
+            metadata={"script_id": self.script_id, "niche": self.niche},
+        )
+
 
 class TimelineBuilder:
     """Builds a frame-accurate, gapless multi-shot timeline from sentence timings."""
@@ -91,8 +170,6 @@ class TimelineBuilder:
         angle_sequence = ["wide", "close_up", "medium", "macro"]
         sentences_data = sentences_data or []
 
-        # If a pre-computed shot plan (e.g. from GeminiClient) is provided, use it;
-        # otherwise use local BeatPlanner for beat-level shot planning
         if shot_plan is None:
             shot_plan = BeatPlanner.plan_video_beats(
                 sentence_timings=sentence_timings,

@@ -60,9 +60,10 @@ class OpenverseProvider(BaseMediaProvider):
         }
 
         try:
-            res = requests.get("https://api.openverse.org/v1/images/", headers=headers, params=params, timeout=4)
+            res = requests.get("https://api.openverse.org/v1/images/", headers=headers, params=params, timeout=3)
             if res.status_code != 200:
                 logger.warning(f"[Openverse] HTTP {res.status_code}")
+                self.record_failure()
                 return []
 
             data = res.json()
@@ -124,5 +125,6 @@ class OpenverseProvider(BaseMediaProvider):
 
             return results
         except Exception as e:
-            logger.error(f"[Openverse] Search error: {e}")
+            logger.warning(f"[Openverse] Search error: {e}")
+            self.record_failure()
             return []

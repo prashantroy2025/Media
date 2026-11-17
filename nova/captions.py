@@ -13,6 +13,80 @@ from nova.logging_setup import logger
 from nova.tts import WordTiming
 
 
+CAPTION_PRESETS = {
+    "minimal_documentary": {
+        "font_size": 48,
+        "primary_color": (245, 245, 245, 255),
+        "highlight_color": (255, 255, 255, 255),
+        "outline_color": (0, 0, 0, 180),
+        "outline_width": 3,
+        "box_color": (15, 20, 25, 170),
+        "y_pos": 1420,
+        "words_per_group": 4,
+    },
+    "cinematic_storytelling": {
+        "font_size": 52,
+        "primary_color": (255, 255, 255, 255),
+        "highlight_color": (247, 217, 78, 255),  # Amber gold
+        "outline_color": (0, 0, 0, 220),
+        "outline_width": 5,
+        "box_color": None,
+        "y_pos": 1380,
+        "words_per_group": 3,
+    },
+    "high_energy_shorts": {
+        "font_size": 60,
+        "primary_color": (255, 255, 255, 255),
+        "highlight_color": (0, 255, 255, 255),  # Cyan neon
+        "outline_color": (0, 0, 0, 255),
+        "outline_width": 7,
+        "box_color": None,
+        "y_pos": 1320,
+        "words_per_group": 3,
+    },
+    "modern_educational": {
+        "font_size": 52,
+        "primary_color": (255, 255, 255, 255),
+        "highlight_color": (255, 215, 0, 255),  # Bright gold
+        "outline_color": (0, 0, 0, 200),
+        "outline_width": 4,
+        "box_color": (18, 24, 38, 190),
+        "y_pos": 1380,
+        "words_per_group": 3,
+    },
+    "bold_viral_facts": {
+        "font_size": 60,
+        "primary_color": (255, 255, 255, 255),
+        "highlight_color": (255, 225, 0, 255),  # Electric yellow
+        "outline_color": (0, 0, 0, 255),
+        "outline_width": 7,
+        "box_color": (10, 14, 22, 190),  # High-contrast backing pill
+        "y_pos": 1350,
+        "words_per_group": 3,
+    },
+    "dark_mystery": {
+        "font_size": 50,
+        "primary_color": (220, 225, 230, 255),
+        "highlight_color": (0, 212, 212, 255),  # Icy cyan
+        "outline_color": (0, 0, 0, 230),
+        "outline_width": 5,
+        "box_color": (10, 15, 20, 200),
+        "y_pos": 1380,
+        "words_per_group": 3,
+    },
+    "financial_explainer": {
+        "font_size": 54,
+        "primary_color": (255, 255, 255, 255),
+        "highlight_color": (43, 215, 66, 255),  # Cash green
+        "outline_color": (0, 0, 0, 240),
+        "outline_width": 6,
+        "box_color": (12, 25, 18, 180),
+        "y_pos": 1380,
+        "words_per_group": 3,
+    },
+}
+
+
 def _format_ass_time(seconds: float) -> str:
     """Converts seconds into ASS timestamp format: H:MM:SS.cs"""
     hrs = int(seconds // 3600)
@@ -233,6 +307,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         output_mov_path: Path,
         fps: int = 30,
         watermark_text: str = "@NovaPrashantroy",
+        caption_preset: str = "bold_viral_facts",
     ) -> Path:
         """Renders a single continuous transparent RGBA video stream with karaoke word highlights.
 
@@ -241,8 +316,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         import subprocess
 
         output_mov_path.parent.mkdir(parents=True, exist_ok=True)
-        font = _get_font(self.settings, 58)
+        preset_cfg = CAPTION_PRESETS.get(caption_preset, CAPTION_PRESETS["bold_viral_facts"])
+
+        f_size = preset_cfg.get("font_size", 58)
+        font = _get_font(self.settings, f_size)
         watermark_font = _get_font(self.settings, 32)
+        primary_col = preset_cfg.get("primary_color", (255, 255, 255, 255))
+        highlight_col = preset_cfg.get("highlight_color", (255, 215, 0, 255))
+        outline_col = preset_cfg.get("outline_color", (0, 0, 0, 255))
+        outline_w = preset_cfg.get("outline_width", 7)
+        box_col = preset_cfg.get("box_color")
+        y_pos = preset_cfg.get("y_pos", self.safe_margin_y)
+        words_per_group = preset_cfg.get("words_per_group", self.words_per_group)
 
         # Base transparent background with watermark
         blank_img = Image.new("RGBA", (1080, 1920), (0, 0, 0, 0))
@@ -260,8 +345,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         # Group words into chunks
         chunks = []
-        for i in range(0, len(word_timings), self.words_per_group):
-            c = word_timings[i : i + self.words_per_group]
+        for i in range(0, len(word_timings), words_per_group):
+            c = word_timings[i : i + words_per_group]
             if c:
                 chunks.append(c)
 
@@ -271,27 +356,36 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             words = [w.word.strip().upper() for w in chunk]
             full_phrase = " ".join(words)
             dummy_draw = ImageDraw.Draw(blank_img)
-            bbox = dummy_draw.textbbox((0, 0), full_phrase, font=font, stroke_width=7)
+            bbox = dummy_draw.textbbox((0, 0), full_phrase, font=font, stroke_width=outline_w)
             total_w = bbox[2] - bbox[0]
+            phrase_h = bbox[3] - bbox[1]
             start_x = max(60, (1080 - total_w) // 2)
-            y_pos = self.safe_margin_y
 
             for active_idx in range(len(chunk)):
                 sub_img = blank_img.copy()
                 draw = ImageDraw.Draw(sub_img)
+
+                # Draw pill box background if preset specifies it
+                if box_col:
+                    draw.rounded_rectangle(
+                        [start_x - 24, y_pos - 12, start_x + total_w + 24, y_pos + phrase_h + 16],
+                        radius=16,
+                        fill=box_col,
+                    )
+
                 cur_x = start_x
                 for idx, w in enumerate(words):
                     is_active = idx == active_idx
-                    fill_color = (255, 215, 0, 255) if is_active else (255, 255, 255, 255)
+                    fill_color = highlight_col if is_active else primary_col
                     draw.text(
                         (cur_x, y_pos),
                         w,
                         font=font,
                         fill=fill_color,
-                        stroke_width=7,
-                        stroke_fill=(0, 0, 0, 255),
+                        stroke_width=outline_w,
+                        stroke_fill=outline_col,
                     )
-                    w_box = draw.textbbox((0, 0), w + " ", font=font, stroke_width=7)
+                    w_box = draw.textbbox((0, 0), w + " ", font=font, stroke_width=outline_w)
                     cur_x += w_box[2] - w_box[0]
                 rendered_states[(c_idx, active_idx)] = sub_img.tobytes()
 

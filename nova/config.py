@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import re
 from typing import Literal
 
 import yaml
@@ -127,22 +128,23 @@ class OllamaConfig(BaseModel):
 
 
 class GroqConfig(BaseModel):
-    model: str = "llama-3.3-70b-versatile"
+    model: str = "qwen/qwen3.8-27b"
     timeout_seconds: int = 30
     api_key: str | None = None
 
 
 class GeminiConfig(BaseModel):
     enabled: bool = True
-    model: str = "gemini-3.8-flash"
-    text_model: str = "gemini-3.8-flash"
-    image_model: str = "gemini-3.1-flash-image"
+    model: str = "gemini-3.5-flash-lite"
+    text_model: str = "gemini-3.5-flash-lite"
+    image_model: str = "imagen-3.0-generate-002"
     veo_enabled: bool = False
     max_images_per_video: int = 4
     max_veo_seconds_per_video: int = 8
     daily_budget: float = 5.0
     timeout_seconds: int = 30
     api_key: str | None = None
+    api_keys: list[str] = Field(default_factory=list)
 
 
 class HuggingFaceConfig(BaseModel):
@@ -448,10 +450,16 @@ def load_config(config_path: str | Path | None = None) -> NovaSettings:
         settings.llm.ollama.host = os.getenv("OLLAMA_HOST")
     if os.getenv("GROQ_API_KEY"):
         settings.llm.groq.api_key = os.getenv("GROQ_API_KEY")
-    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEYS") or os.getenv("GOOGLE_API_KEY")
     if gemini_key:
         settings.llm.gemini.api_key = gemini_key
         settings.gemini.api_key = gemini_key
+        parsed_keys = [k.strip().strip("\"'") for k in re.split(r"[,;\n\r\t]+", gemini_key.strip()) if k.strip()]
+        settings.gemini.api_keys = parsed_keys
+        settings.llm.gemini.api_keys = parsed_keys
+    else:
+        settings.gemini.api_keys = []
+        settings.llm.gemini.api_keys = []
     if os.getenv("HF_TOKEN"):
         settings.llm.huggingface.api_token = os.getenv("HF_TOKEN")
     if os.getenv("INSTAGRAM_ACCESS_TOKEN"):

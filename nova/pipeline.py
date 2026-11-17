@@ -42,8 +42,14 @@ class PipelineRunner:
     def run_full(
         self,
         custom_topic_id: int | None = None,
+        custom_script_id: int | None = None,
         forced_niche: str | None = None,
         skip_collect: bool = False,
+        mode: str = "professional",
+        preset_name: str | None = None,
+        reference_video: Path | None = None,
+        reference_image: Path | None = None,
+        reference_mode: str = "reference_inspired",
     ) -> Video:
         """Executes the complete pipeline: Sourcing -> Ranking -> Fact Script -> Voice -> Visuals -> Render -> Quality Gate -> Queue/Publish."""
         start_time = time.time()
@@ -68,8 +74,14 @@ class PipelineRunner:
                 start_time=start_time,
                 stage_timings=stage_timings,
                 custom_topic_id=custom_topic_id,
+                custom_script_id=custom_script_id,
                 forced_niche=forced_niche,
                 skip_collect=skip_collect,
+                mode=mode,
+                preset_name=preset_name,
+                reference_video=reference_video,
+                reference_image=reference_image,
+                reference_mode=reference_mode,
             )
         finally:
             try:
@@ -83,8 +95,14 @@ class PipelineRunner:
         start_time: float,
         stage_timings: dict[str, float],
         custom_topic_id: int | None = None,
+        custom_script_id: int | None = None,
         forced_niche: str | None = None,
         skip_collect: bool = False,
+        mode: str = "professional",
+        preset_name: str | None = None,
+        reference_video: Path | None = None,
+        reference_image: Path | None = None,
+        reference_mode: str = "reference_inspired",
     ) -> Video:
         from nova.utils.guards import check_system_guards, perform_rolling_backup
 
@@ -92,7 +110,27 @@ class PipelineRunner:
         check_system_guards()
         perform_rolling_backup(self.db_mgr.db_path)
 
-        logger.info(f"[bold cyan]Starting Nova Pipeline v8.0 (DryRun={self.dry_run})...[/bold cyan]")
+        # Resolve Studio Production Mode & Creator Preset
+        from nova.presets import get_preset, select_preset_for_topic
+        from nova.reference_engine import ReferenceAnalyzer
+
+        active_preset = None
+        ref_profile = None
+
+        if reference_video or reference_image:
+            ref_path = reference_video or reference_image
+            analyzer = ReferenceAnalyzer(self.output_dir / "references")
+            ref_profile = analyzer.analyze_reference(ref_path, mode=reference_mode)
+            active_preset = ref_profile.to_video_preset(base_preset_id=preset_name or "viral_facts")
+            logger.info(
+                f"[bold cyan]Using Reference-Derived Preset: '{active_preset.name}' "
+                f"({active_preset.target_shot_min}s-{active_preset.target_shot_max}s pacing, mode={reference_mode})[/bold cyan]"
+            )
+        elif preset_name:
+            active_preset = get_preset(preset_name)
+            logger.info(f"[bold cyan]Using Explicit Creator Preset: '{active_preset.name}'[/bold cyan]")
+
+        logger.info(f"[bold cyan]Starting Nova Pipeline v9.0 (Mode={mode}, DryRun={self.dry_run})...[/bold cyan]")
 
         # Stage 1: Topic Collection
         t_stage = time.time()
@@ -183,31 +221,43 @@ class PipelineRunner:
         script = None
         consecutive_failures = 0
 
-        for cand_topic in candidate_topics:
-            logger.info(f"Attempting script generation for candidate #{cand_topic.id}: '{cand_topic.title}'...")
+        if custom_script_id:
+            sess = self.db_mgr.session()
             try:
-                script = writer.generate_script(cand_topic)
-                chosen_topic = cand_topic
-                break
-            except Exception as e:
-                consecutive_failures += 1
-                logger.warning(
-                    f"Candidate #{cand_topic.id} script generation failed ({e}). "
-                    f"Marking status='script_failed' and trying next ranked candidate..."
-                )
-                sess = self.db_mgr.session()
-                try:
-                    t_rec = sess.query(Topic).filter(Topic.id == cand_topic.id).first()
-                    if t_rec:
-                        t_rec.status = "script_failed"
-                        sess.commit()
-                finally:
-                    sess.close()
+                script = sess.query(Script).filter(Script.id == custom_script_id).first()
+                if script:
+                    chosen_topic = sess.query(Topic).filter(Topic.id == script.topic_id).first()
+                    selected_niche = script.niche or (chosen_topic.niche if chosen_topic else "space_science")
+                    logger.info(f"Using pre-existing bespoke script #{script.id} for benchmark: '{script.title}'")
+            finally:
+                sess.close()
 
-                if consecutive_failures >= 3:
-                    raise RuntimeError(
-                        "Pipeline aborted: 3 consecutive candidate topics failed bespoke script generation."
+        if not script:
+            for cand_topic in candidate_topics:
+                logger.info(f"Attempting script generation for candidate #{cand_topic.id}: '{cand_topic.title}'...")
+                try:
+                    script = writer.generate_script(cand_topic)
+                    chosen_topic = cand_topic
+                    break
+                except Exception as e:
+                    consecutive_failures += 1
+                    logger.warning(
+                        f"Candidate #{cand_topic.id} script generation failed ({e}). "
+                        f"Marking status='script_failed' and trying next ranked candidate..."
                     )
+                    sess = self.db_mgr.session()
+                    try:
+                        t_rec = sess.query(Topic).filter(Topic.id == cand_topic.id).first()
+                        if t_rec:
+                            t_rec.status = "script_failed"
+                            sess.commit()
+                    finally:
+                        sess.close()
+
+                    if consecutive_failures >= 3:
+                        raise RuntimeError(
+                            "Pipeline aborted: 3 consecutive candidate topics failed bespoke script generation."
+                        )
 
         if not script or not chosen_topic:
             raise RuntimeError(
@@ -215,6 +265,13 @@ class PipelineRunner:
             )
 
         topic_id = chosen_topic.id
+        if not active_preset:
+            active_preset = select_preset_for_topic(selected_niche, chosen_topic.title, getattr(chosen_topic, "summary", ""))
+            logger.info(
+                f"[bold cyan]Auto-selected Creator Preset: '{active_preset.name}' "
+                f"({active_preset.description}, Transitions: {active_preset.transition_style})[/bold cyan]"
+            )
+
         if self.dry_run:
             sess_demo = self.db_mgr.session()
             try:
@@ -291,6 +348,7 @@ class PipelineRunner:
             output_mov_path=captions_mov_path,
             fps=30,
             watermark_text=self.settings.video.watermark_text,
+            caption_preset=active_preset.caption_preset,
         )
         stage_timings["Stage 5: Forced Alignment"] = time.time() - t_stage
 
@@ -318,7 +376,11 @@ class PipelineRunner:
         shot_plan_dict = shot_plan.to_dict()
         shot_plan_json_path.write_text(json.dumps(shot_plan_dict, indent=2), encoding="utf-8")
 
-        timeline_builder = TimelineBuilder(target_shot_min=2.0, target_shot_max=3.8, fps=30)
+        timeline_builder = TimelineBuilder(
+            target_shot_min=active_preset.target_shot_min,
+            target_shot_max=active_preset.target_shot_max,
+            fps=30,
+        )
         timeline_plan = timeline_builder.build_timeline(
             sentence_timings=sentence_timings,
             total_duration=total_duration,
@@ -332,10 +394,37 @@ class PipelineRunner:
 
         # Collect candidate pool across all queries in timeline
         all_queries = [shot.query for shot in timeline_plan.shots if shot.query]
-        main_sub = sentences[0].get("visual_intent", {}).get("main_subject", "") if sentences else ""
+        main_sub = ""
+        if sentences and sentences[0].get("visual_intent"):
+            vi = sentences[0]["visual_intent"]
+            main_sub = vi.get("main_subject", "") if isinstance(vi, dict) else str(vi)[:30]
+        if not main_sub and script.title:
+            import re
+            words = [w for w in re.findall(r"\b[A-Za-z]{4,}\b", script.title) if w.lower() not in ("could", "would", "about", "their", "where", "giant", "having", "inside", "after")]
+            if words:
+                main_sub = " ".join(words[:2])
+                all_queries.append(main_sub)
+
         candidate_pool = visuals_mgr.get_candidate_pool(
             all_queries, niche=script.niche or "ai_tech", main_subject=main_sub
         )
+
+        # Creative Director orchestration (v9.2)
+        from nova.creative_director import CreativeDirector
+        director = CreativeDirector(preset=active_preset, niche=script.niche or "space_science")
+        directorial_plan = director.direct_scene_plan(
+            sentences=sentences,
+            total_duration=total_duration,
+            reference_storyboard=ref_profile,
+        )
+        decision_map = {d.sentence_id: d for d in directorial_plan}
+        for shot in timeline_plan.shots:
+            dec = decision_map.get(shot.sentence_id)
+            if dec:
+                shot.visual_route = dec.recommended_route
+                shot.use_parallax = (dec.recommended_route == "parallax_25d")
+                shot.framing = dec.framing
+                shot.transition_style = dec.transition_in
 
         shot_video_paths = []
         attributions = []
@@ -423,17 +512,29 @@ class PipelineRunner:
 
         # Stage 8: Background Music & Audio Mixing with SFX
         t_stage = time.time()
-        logger.info("[bold yellow]STAGE 8: Mixing Background Music with Ducking & Sound Design...[/bold yellow]")
-        music_mgr = MusicManager(self.settings)
-        final_audio_path = self.output_dir / f"master_audio_{script.id}_{timestamp_str}.aac"
-        niche_cfg = self.settings.niches.get(script.niche)
-        niche_mood = niche_cfg.music_mood if niche_cfg else "curious"
-        _, music_attr = music_mgr.mix_audio(
-            tts_result.audio_path,
-            final_audio_path,
-            total_duration,
-            mood=niche_mood,
+        logger.info(
+            f"[bold yellow]STAGE 8: Mastering Audio with Voice Enhancement & Ducking (Mood='{active_preset.music_mood}', SFX='{active_preset.sfx_intensity}')...[/bold yellow]"
         )
+        final_audio_path = self.output_dir / f"master_audio_{script.id}_{timestamp_str}.aac"
+        if mode in ("professional", "premium_ai"):
+            from nova.sound_designer import SoundDesignDirector
+            sd_director = SoundDesignDirector(self.settings)
+            _, music_attr = sd_director.mix_master_soundtrack(
+                voice_path=tts_result.audio_path,
+                output_audio_path=final_audio_path,
+                total_duration=total_duration,
+                timeline_shots=timeline_plan.shots,
+                mood=active_preset.music_mood,
+                sfx_intensity=active_preset.sfx_intensity,
+            )
+        else:
+            music_mgr = MusicManager(self.settings)
+            _, music_attr = music_mgr.mix_audio(
+                tts_result.audio_path,
+                final_audio_path,
+                total_duration,
+                mood=active_preset.music_mood,
+            )
         if music_attr and music_attr.get("title"):
             attributions.append(
                 StockAttribution(
@@ -451,9 +552,12 @@ class PipelineRunner:
 
         # Stage 9: Hardware-Accelerated Video Assembly & Subtitle Burn-in
         t_stage = time.time()
-        logger.info("[bold yellow]STAGE 9: Hardware-Accelerated FFmpeg Video Rendering...[/bold yellow]")
+        logger.info(
+            f"[bold yellow]STAGE 9: Hardware-Accelerated Video Assembly (Preset='{active_preset.name}', Transitions='{active_preset.transition_style}')...[/bold yellow]"
+        )
         renderer = VideoRenderer(self.settings)
         final_video_path = self.output_dir / f"nova_video_{script.id}_{timestamp_str}.mp4"
+        trans_style = "cut" if mode == "fast" else active_preset.transition_style
         renderer.assemble_video(
             scene_video_paths=shot_video_paths,
             audio_path=final_audio_path,
@@ -463,6 +567,10 @@ class PipelineRunner:
             subtitle_stream_path=captions_mov_path,
             motion_overlay_stream_path=motion_mov_path,
             timeline_plan=timeline_plan,
+            preset=active_preset,
+            transition_style=trans_style,
+            transition_duration=active_preset.transition_duration,
+            custom_color_grade=active_preset.color_grade,
         )
 
         # Also save standard timeline.json alongside final video
@@ -656,16 +764,27 @@ class PipelineRunner:
             session_v.close()
         stage_timings["Stage 12: Quality Gate"] = time.time() - t_stage
 
-        # Stage 13: Empirical Scorecard Audit (25 Points)
+        # Stage 13: Empirical Scorecard Audit & Autonomous Video Critic
         t_stage = time.time()
-        logger.info("[bold yellow]STAGE 13: Empirical Scorecard Audit (25 Points)...[/bold yellow]")
+        logger.info("[bold yellow]STAGE 13: Empirical Scorecard Audit & Autonomous Video Critic (10-Point QA)...[/bold yellow]")
         from nova.audit import VideoAuditor
+        from nova.critic import VideoCritic
 
         auditor = VideoAuditor(self.settings, self.db_mgr)
         audit_res = auditor.audit_video(video_id=video_id)
+
+        critic = VideoCritic(self.output_dir)
+        critic_report = critic.evaluate(
+            video_path=final_video_path,
+            video_id=video_id,
+            timeline_plan=timeline_plan,
+            alignment_data=visual_alignment_list,
+            sync_stats=sync_stats,
+        )
+
         logger.info(
             f"Video #{video_id} Scorecard: {audit_res.score_percentage:.1f}% "
-            f"({audit_res.passed_metrics}/{audit_res.total_metrics} PASS)"
+            f"({audit_res.passed_metrics}/{audit_res.total_metrics} PASS) | Critic QA: {critic_report.overall_score:.1f}%"
         )
 
         session_sc = self.db_mgr.session()
@@ -678,11 +797,15 @@ class PipelineRunner:
                     "passed_checks": audit_res.passed_metrics,
                     "total_checks": audit_res.total_metrics,
                     "failed_metrics": failed_names,
+                    "critic_score": critic_report.overall_score,
+                    "critic_passed": critic_report.passed_qa,
+                    "defects_count": len(critic_report.defects),
+                    "critic_report_html": str(self.output_dir / f"critic_report_{video_id}.html"),
                 })
                 session_sc.commit()
         finally:
             session_sc.close()
-        stage_timings["Stage 13: Scorecard Audit"] = time.time() - t_stage
+        stage_timings["Stage 13: Scorecard & Critic"] = time.time() - t_stage
 
         # Stage 14: Queue vs Auto-Publish Dispatch
         t_stage = time.time()

@@ -367,6 +367,36 @@ def view_audit_report(video_id: int):
     raise HTTPException(status_code=404, detail=f"Audit report for video #{video_id} could not be found.")
 
 
+@app.get("/critic/{video_id}", response_class=HTMLResponse)
+def view_critic_report(video_id: int):
+    report_path = PROJECT_ROOT / "output" / f"critic_report_{video_id}.html"
+    if report_path.exists():
+        return HTMLResponse(content=report_path.read_text(encoding="utf-8"))
+
+    # If report file doesn't exist yet, evaluate video dynamically
+    session = db_mgr.session()
+    try:
+        from nova.db import Video
+        v = session.query(Video).filter(Video.id == video_id).first()
+        if not v or not Path(v.video_path).exists():
+            raise HTTPException(status_code=404, detail=f"Video #{video_id} media file not found on disk.")
+
+        from nova.critic import VideoCritic
+        critic = VideoCritic(PROJECT_ROOT / "output")
+        rep = critic.evaluate(Path(v.video_path), video_id=video_id)
+        if report_path.exists():
+            return HTMLResponse(content=report_path.read_text(encoding="utf-8"))
+        raise HTTPException(status_code=404, detail=f"Critic report for video #{video_id} could not be generated.")
+    finally:
+        session.close()
+
+
+@app.get("/api/presets")
+def api_presets():
+    from nova.presets import list_presets
+    return {"presets": list_presets()}
+
+
 @app.get("/policy", response_class=HTMLResponse)
 def policy_view(request: Request, success: str = ""):
     import yaml

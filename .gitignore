@@ -17,10 +17,6 @@ __pycache__/
 credentials/
 *.pem
 *.key
-service-account*.json
-google-credentials*.json
-client_secret*.json
-*token*.json
 
 # Data and generated files
 data/
@@ -57,7 +53,29 @@ temp/
 tmp/
 coverage/
 
-# Generated asset cache
+# Generated and cached media
 assets/cache/
-gemini_usage.json
+assets/references/
+benchmarks/
+models/
 
+# Local credentials
+.env
+.env.*
+!.env.example
+credentials/
+*.pem
+*.key
+*service-account*.json
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Generated output
+output/
+logs/
+*.log

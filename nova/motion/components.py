@@ -351,3 +351,109 @@ class FirstFrameHookCard(MotionComponent):
             draw.text((lx + 4, ly + 4), line, font=font, fill=(0, 0, 0, int(200 * fade)))
             # Text
             draw.text((lx, ly), line, font=font, fill=(*palette.accent, alpha))
+
+
+class InfographicCard(MotionComponent):
+    """Modern glassmorphic infographic badge with key stat, title, and verified icon."""
+
+    def __init__(
+        self,
+        title: str,
+        stat_value: str,
+        subtitle: str = "",
+        start_time: float = 0.0,
+        duration: float = 2.4,
+        y_pos: int = 420,
+    ):
+        self.title = title.upper()
+        self.stat_value = stat_value
+        self.subtitle = subtitle
+        self.start_time = start_time
+        self.duration = duration
+        self.y_pos = y_pos
+
+    def render_frame(self, canvas: Image.Image, t_rel: float, niche: str = "ai_tech") -> None:
+        if t_rel < self.start_time or t_rel > (self.start_time + self.duration):
+            return
+
+        progress = (t_rel - self.start_time) / self.duration
+        fade = 1.0 if progress < 0.8 else max(0.0, 1.0 - (progress - 0.8) / 0.2)
+        alpha = int(255 * fade)
+
+        palette = BRAND_PALETTES.get(niche, BRAND_PALETTES["ai_tech"])
+        draw = ImageDraw.Draw(canvas)
+
+        card_w, card_h = 880, 240
+        x1 = (1080 - card_w) // 2
+        y1 = self.y_pos
+        x2 = x1 + card_w
+        y2 = y1 + card_h
+
+        # Draw glassmorphic background
+        draw.rounded_rectangle([x1, y1, x2, y2], radius=24, fill=(15, 23, 42, int(210 * fade)))
+        draw.rounded_rectangle([x1, y1, x2, y2], radius=24, outline=(*palette.primary, int(180 * fade)), width=3)
+
+        # Title
+        f_title = font_mgr.get_font(28, bold=True)
+        draw.text((x1 + 40, y1 + 32), self.title, font=f_title, fill=(*palette.primary, alpha))
+
+        # Big Stat Value
+        f_val = font_mgr.get_font(68, bold=True)
+        draw.text((x1 + 40, y1 + 76), self.stat_value, font=f_val, fill=(255, 255, 255, alpha))
+
+        # Subtitle
+        if self.subtitle:
+            f_sub = font_mgr.get_font(26, bold=False)
+            draw.text((x1 + 40, y1 + 164), self.subtitle, font=f_sub, fill=(148, 163, 184, alpha))
+
+
+class LocationMarker(MotionComponent):
+    """Expanding radar pulse and location pin for geographic & astronomical events."""
+
+    def __init__(
+        self,
+        location_name: str,
+        start_time: float = 0.0,
+        duration: float = 2.2,
+        center_pos: tuple[int, int] = (540, 520),
+    ):
+        self.location_name = location_name.upper()
+        self.start_time = start_time
+        self.duration = duration
+        self.center_pos = center_pos
+
+    def render_frame(self, canvas: Image.Image, t_rel: float, niche: str = "ai_tech") -> None:
+        if t_rel < self.start_time or t_rel > (self.start_time + self.duration):
+            return
+
+        progress = (t_rel - self.start_time) / self.duration
+        fade = 1.0 if progress < 0.8 else max(0.0, 1.0 - (progress - 0.8) / 0.2)
+        alpha = int(255 * fade)
+
+        cx, cy = self.center_pos
+        palette = BRAND_PALETTES.get(niche, BRAND_PALETTES["ai_tech"])
+        draw = ImageDraw.Draw(canvas)
+
+        # Expanding radar pulse
+        pulse_r = int(20 + 70 * (progress % 0.5) / 0.5)
+        pulse_alpha = int(max(0, 180 * (1.0 - (progress % 0.5) / 0.5)) * fade)
+        draw.ellipse([cx - pulse_r, cy - pulse_r, cx + pulse_r, cy + pulse_r], outline=(*palette.accent, pulse_alpha), width=3)
+
+        # Center core dot
+        draw.ellipse([cx - 12, cy - 12, cx + 12, cy + 12], fill=(*palette.accent, alpha))
+
+        # Location name badge
+        f_name = font_mgr.get_font(32, bold=True)
+        bbox = draw.textbbox((0, 0), self.location_name, font=f_name)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+
+        bx1 = cx - tw // 2 - 20
+        by1 = cy + 32
+        bx2 = cx + tw // 2 + 20
+        by2 = by1 + th + 18
+
+        draw.rounded_rectangle([bx1, by1, bx2, by2], radius=12, fill=(11, 15, 25, int(220 * fade)))
+        draw.rounded_rectangle([bx1, by1, bx2, by2], radius=12, outline=(*palette.primary, int(150 * fade)), width=2)
+        draw.text((cx - tw // 2, by1 + 8), self.location_name, font=f_name, fill=(255, 255, 255, alpha))
+

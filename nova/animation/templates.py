@@ -121,34 +121,12 @@ def _get_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFon
     return ImageFont.load_default()
 
 
-def _wrap_text(text: str, font: ImageFont.ImageFont, max_width: int, max_lines: int = 4) -> list[str]:
+def _wrap_text(text: str, font: ImageFont.ImageFont, max_width: int, max_lines: int = 6) -> list[str]:
     """Wraps text into clean lines without truncating with '...' or cutting words."""
-    words = text.split()
-    if not words:
-        return []
-    lines: list[str] = []
-    current_line: list[str] = []
+    from nova.typography.engine import TypographyLayoutEngine
     dummy_img = Image.new("RGB", (1, 1))
     draw = ImageDraw.Draw(dummy_img)
-
-    for word in words:
-        test_line = " ".join(current_line + [word])
-        bbox = draw.textbbox((0, 0), test_line, font=font)
-        w = bbox[2] - bbox[0]
-        if w <= max_width:
-            current_line.append(word)
-        else:
-            if current_line:
-                lines.append(" ".join(current_line))
-                current_line = [word]
-            else:
-                lines.append(word)
-                current_line = []
-        if len(lines) >= max_lines:
-            break
-    if current_line and len(lines) < max_lines:
-        lines.append(" ".join(current_line))
-    return lines
+    return TypographyLayoutEngine.wrap_text_smart(text, font, max_width, draw)
 
 
 def _create_ffmpeg_pipe(out_path: Path, width: int = 1080, height: int = 1920, fps: int = 30) -> subprocess.Popen:
@@ -182,46 +160,42 @@ def _draw_cinematic_background(width: int, height: int, frame_idx: int, total_fr
     - Gentle parallax grid / light streaks
     Never competes with text (low contrast background elements).
     """
-    base = Image.new("RGB", (width, height), (10, 14, 22))
-    draw = ImageDraw.Draw(base)
+    base = Image.new("RGB", (width, height), (18, 26, 44))
+    draw = ImageDraw.Draw(base, "RGBA")
 
-    # 1. Slow, subtle vertical gradient shift
+    # 1. Elegant cinematic vertical gradient (deep midnight blue to rich celestial navy)
     cycle = (frame_idx / max(1, total_frames)) * 2 * math.pi
-    shift_g = int(math.sin(cycle) * 4)
-    shift_b = int(math.cos(cycle) * 6)
+    shift_g = int(math.sin(cycle) * 6)
+    shift_b = int(math.cos(cycle) * 8)
 
-    for y in range(0, height, 4):
+    for y in range(0, height, 8):
         fac = y / height
-        r = int(9 + fac * 6)
-        g = max(0, min(255, int(12 + fac * 10 + shift_g)))
-        b = max(0, min(255, int(20 + fac * 18 + shift_b)))
-        draw.rectangle([0, y, width, y + 4], fill=(r, g, b))
+        r = int(20 + fac * 16)
+        g = max(0, min(255, int(28 + fac * 22 + shift_g)))
+        b = max(0, min(255, int(55 + fac * 45 + shift_b)))
+        draw.rectangle([0, y, width, y + 8], fill=(r, g, b))
 
-    # 2. Ambient subtle parallax grid (Layer 1 - slow)
-    drift = (frame_idx * 0.8) % 80
-    for x in range(0, width, 80):
-        draw.line([(x, 0), (x, height)], fill=(16, 24, 38), width=1)
-    for y in range(int(drift), height, 80):
-        draw.line([(0, y), (width, y)], fill=(16, 24, 38), width=1)
+    # 2. Ambient glowing radial cosmic spotlight
+    cx, cy = 540, 720
+    spot_pulse = 1.0 + 0.05 * math.sin(cycle)
+    spot_r = int(480 * spot_pulse)
+    for sr in range(spot_r, 0, -60):
+        alpha = int(45 * (sr / spot_r))
+        draw.ellipse([cx - sr, cy - sr, cx + sr, cy + sr], fill=(40, 80, 140, alpha))
 
-    # 3. Ambient soft radial spotlight behind card area
-    spot_pulse = 1.0 + 0.04 * math.sin(cycle)
-    spot_r = int(380 * spot_pulse)
-    draw.ellipse([540 - spot_r, 720 - spot_r, 540 + spot_r, 720 + spot_r], outline=(15, 30, 50), width=2)
-
-    # 4. Drifting luminous particles (multi-layer parallax)
-    for p_idx in range(24):
-        speed_x = 0.6 + (p_idx % 4) * 0.4
-        speed_y = 1.2 + (p_idx % 3) * 0.8
-        base_x = (p_idx * 47) % width
-        base_y = (p_idx * 83) % height
-        px = int((base_x + frame_idx * speed_x + math.sin(cycle + p_idx) * 20) % width)
+    # 3. Drifting luminous particles (multi-layer parallax)
+    for p_idx in range(48):
+        speed_x = 0.5 + (p_idx % 4) * 0.4
+        speed_y = 0.8 + (p_idx % 3) * 0.6
+        base_x = (p_idx * 43) % width
+        base_y = (p_idx * 79) % height
+        px = int((base_x + frame_idx * speed_x + math.sin(cycle + p_idx) * 25) % width)
         py = int((base_y - frame_idx * speed_y) % height)
-        radius = 1 + (p_idx % 3)
-        color = (0, 210, 255) if p_idx % 2 == 0 else (120, 160, 255)
+        radius = 1.5 + (p_idx % 3)
+        color = (0, 230, 255, 180) if p_idx % 2 == 0 else (160, 200, 255, 140)
         draw.ellipse([px - radius, py - radius, px + radius, py + radius], fill=color)
 
-    return base
+    return base.convert("RGB")
 
 
 def parse_grounded_number(number_str: str) -> tuple[float, str, str, bool, bool]:
@@ -324,8 +298,8 @@ def render_count_up(
     font_measure = _get_font(34, bold=False)
     font_sub = _get_font(28, bold=False)
 
-    card_bg_rgb = (13, 20, 32)
-    cyan_rgb = (0, 210, 255)
+    card_bg_rgb = (24, 38, 62)
+    accent_rgb = (56, 189, 248)
     white_rgb = (255, 255, 255)
 
     last_frame_img: Image.Image | None = None
@@ -341,7 +315,7 @@ def render_count_up(
 
         # Main Glassmorphic Center Card (Strictly within Safe Zone: y = 260 to 1180)
         card_box = [80, 260, 1000, 1180]
-        draw.rounded_rectangle(card_box, radius=32, fill=card_bg_rgb, outline=cyan_rgb, width=2)
+        draw.rounded_rectangle(card_box, radius=32, fill=card_bg_rgb, outline=(45, 90, 160), width=2)
 
         cx = 540
 
@@ -354,11 +328,11 @@ def render_count_up(
             draw.rounded_rectangle(
                 [cx - hw // 2 - 20, cur_top_y, cx + hw // 2 + 20, cur_top_y + 44],
                 radius=14,
-                fill=(0, 210, 255, 40),
-                outline=cyan_rgb,
+                fill=(56, 189, 248, 40),
+                outline=accent_rgb,
                 width=1,
             )
-            draw.text((cx - hw // 2, cur_top_y + 8), clean_pill, font=font_sub, fill=cyan_rgb)
+            draw.text((cx - hw // 2, cur_top_y + 8), clean_pill, font=font_sub, fill=accent_rgb)
             cur_top_y += 70
         else:
             cur_top_y += 30
@@ -399,7 +373,7 @@ def render_count_up(
                 clean_u = unit.strip().upper()
                 bbox_u = draw.textbbox((0, 0), clean_u, font=font_unit)
                 uw = bbox_u[2] - bbox_u[0]
-                draw.text((cx - uw // 2, cy_stat + nh + 12), clean_u, font=font_unit, fill=cyan_rgb)
+                draw.text((cx - uw // 2, cy_stat + nh + 12), clean_u, font=font_unit, fill=accent_rgb)
                 bar_y = cy_stat + nh + 85
             else:
                 bar_y = cy_stat + nh + 35
@@ -901,23 +875,42 @@ def render_concept_card(
         draw.rounded_rectangle([cx - cw // 2 - 20, 320, cx + cw // 2 + 20, 370], radius=14, fill=(0, 210, 255, 40), outline=(0, 210, 255), width=1)
         draw.text((cx - cw // 2, 332), category.upper(), font=font_sub, fill=(0, 210, 255))
 
-        # Title
-        t_lines = _wrap_text(title.upper(), font_title, max_width=820, max_lines=3)
-        ty = 420
+        # Title with Intelligent Typography (Dynamic sizing, zero clipping)
+        from nova.typography.engine import TypographyLayoutEngine
+        font_t_fit, t_lines, _, _ = TypographyLayoutEngine.fit_text_to_bounds(
+            text=title.upper(),
+            max_width=820,
+            max_height=200,
+            start_font_size=52,
+            min_font_size=24,
+            bold=True,
+            max_lines=3,
+            draw=draw,
+        )
+        ty = 410
         for tl in t_lines:
-            bbox_t = draw.textbbox((0, 0), tl, font=font_title)
-            draw.text((cx - (bbox_t[2] - bbox_t[0]) // 2, ty), tl, font=font_title, fill=(255, 255, 255))
-            ty += 64
+            bbox_t = draw.textbbox((0, 0), tl, font=font_t_fit)
+            draw.text((cx - (bbox_t[2] - bbox_t[0]) // 2, ty), tl, font=font_t_fit, fill=(255, 255, 255))
+            ty += (bbox_t[3] - bbox_t[1]) + 12
 
-        draw.line([(180, ty + 20), (900, ty + 20)], fill=(30, 50, 75), width=2)
-        by = ty + 60
+        draw.line([(180, ty + 15), (900, ty + 15)], fill=(30, 50, 75), width=2)
+        by = ty + 45
 
-        # Mechanism / Spoken Insight
-        m_lines = _wrap_text(mechanism, font_body, max_width=800, max_lines=5)
+        # Mechanism / Spoken Insight with Intelligent Typography
+        font_m_fit, m_lines, _, _ = TypographyLayoutEngine.fit_text_to_bounds(
+            text=mechanism,
+            max_width=800,
+            max_height=320,
+            start_font_size=38,
+            min_font_size=20,
+            bold=False,
+            max_lines=5,
+            draw=draw,
+        )
         for ml in m_lines:
-            bbox_m = draw.textbbox((0, 0), ml, font=font_body)
-            draw.text((cx - (bbox_m[2] - bbox_m[0]) // 2, by), ml, font=font_body, fill=(220, 235, 255))
-            by += 54
+            bbox_m = draw.textbbox((0, 0), ml, font=font_m_fit)
+            draw.text((cx - (bbox_m[2] - bbox_m[0]) // 2, by), ml, font=font_m_fit, fill=(220, 235, 255))
+            by += (bbox_m[3] - bbox_m[1]) + 10
 
         # Real source footer (if provided)
         if source_text and source_text.strip() and source_text.strip().lower() not in FORBIDDEN_PLACEHOLDER_FOOTERS:
@@ -1011,8 +1004,28 @@ def render_data_card_for_beat(
         }
         return render_diagram_animation(diagram_spec, duration, out_path, fps)
 
-    # 7. Concept card fallback for abstract ideas (never ungrounded count-up)
-    concept_title = beat.entities[0] if beat.entities else (beat.visual_intent[:36] if beat.visual_intent else "Core Mechanism")
+    # 7. Procedural Starfield Composition for Space / Astronomy / Cosmic / Stars
+    spoken_lower = beat.spoken_text.lower()
+    intent_lower = (beat.visual_intent or "").lower()
+    combined_desc = f"{spoken_lower} {intent_lower}"
+    if any(k in combined_desc for k in ("star", "space", "galaxy", "cosmic", "orbit", "universe", "nebula", "celestial", "andromeda")):
+        from nova.timeline.compositions import DeepSpaceStarfieldComposition
+        comp = DeepSpaceStarfieldComposition(width=1080, height=1920, fps=fps)
+        return comp.render_to_video(out_path, duration=duration, fps=fps)
+
+    # 8. Motion Design Studio Procedural Narrative Routing (v9.4)
+    from nova.timeline.motion_studio import MotionDesignStudio
+    comp = MotionDesignStudio.infer_composition_from_narration(
+        text=beat.spoken_text,
+        intent=beat.visual_intent or "",
+        niche="general",
+    )
+    if comp:
+        logger.info(f"[MotionDesignStudio] Rendering dynamic {comp.__class__.__name__} for beat {beat.beat_id}.")
+        return comp.render_to_video(out_path, duration=duration, fps=fps)
+
+    # 9. Concept card fallback for abstract ideas (Intelligent Typography, zero clipping, no [:36] string slicing)
+    concept_title = beat.entities[0] if beat.entities else (beat.visual_intent if beat.visual_intent else "Core Mechanism")
     return render_concept_card(
         title=concept_title,
         mechanism=beat.spoken_text,

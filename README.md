@@ -1,7 +1,51 @@
-# Nova Autopilot v8.0 🚀
+# Nova Autopilot v9.0 🚀
 
 > **Local-First Autonomous AI Short-Video Studio, Cinematic Motion Engine & Auto-Publisher**  
-> Tailored for **Prashant Roy** (`@NovaPrashantroy` / **PRASHANT ROY**) for generating high-energy, premium **English Fact & Shock-News Shorts** targeting a **high-value English-speaking audience (US, UK, CA, AU)** for **YouTube Shorts** and **Instagram Reels**.
+> Tailored for **Prashant Roy** (`@NovaPrashantroy` / **PRASHANT ROY**) for generating high-energy, premium **English Fact & Shock-News Shorts** targeting a **high-value English-speaking audience (US, UK, CA, AU)** for **YouTube Shorts**, **Instagram Reels**, and **TikTok**.
+
+---
+
+## 🌟 Overview: What's New in v9.0 Studio Transformation
+
+**Nova Autopilot v9.0** transforms the system from a pipeline into a **Full Autonomous AI Short-Form Video Production Studio**:
+
+1. **Professional Creator Presets (`nova.presets`)**:
+   - 10 distinct, finely-tuned creator profiles: `viral_facts`, `documentary`, `cinematic_storytelling`, `dark_mystery`, `financial_education`, `investigative_journalism`, `historical_explainer`, `technology`, `news_explainer`, `high_energy_educational`.
+   - Each preset customizes cut cadence, transition styles, color grading LUTs, typography, safe zone positioning, motion intensity, and background sound design.
+   - CLI command to inspect presets: `python -m nova presets`.
+
+2. **Timeline-Based Video Transitions Engine (`nova.transitions`)**:
+   - Hardware-accelerated FFmpeg `xfade` chaining with Apple Silicon `h264_videotoolbox` support.
+   - Smooth crossfades, dynamic whips (`slideleft`, `slideright`), zoom transitions (`zoomin`), and directional wipes.
+   - Frame padding via `tpad` to guarantee sub-millisecond video-audio synchronization with zero cut seams.
+
+3. **Cinematic Caption & Typography Engine (`nova.captions`)**:
+   - 7 distinct caption design presets with active word karaoke highlighting.
+   - Rounded pill background panels, outlined text, shadow glow, and strict Reels/Shorts UI safe zone adherence (`y=1380`).
+
+4. **Reference Video & Image Intelligence (`nova.reference_engine`)**:
+   - Extracts editing rhythm, shot duration distribution, dominant color palettes, and transition frequency from reference videos or screenshots.
+   - 5 reference matching modes: `reference_inspired`, `reference_matched_pacing`, `reference_matched_composition`, `reference_matched_animation`, `reference_matched_typography_colors`.
+   - CLI command: `python -m nova analyze-reference <file>` saves reusable reference JSON profiles (`assets/references/`).
+
+5. **Advanced Audio & Sound Design Director (`nova.sound_designer`)**:
+   - Contextual procedural SFX placement: impact hits on numerical facts, whooshes on transitions, risers for suspense, and pops on tags.
+   - Vocal mastering with 80 Hz high-pass EQ and 3 kHz presence boost.
+   - Dynamic narration ducking to -18 dB and EBU R128 broadcast normalization (-14 LUFS, -1.5 dBTP).
+
+6. **Modular AI Video Generation Framework (`nova.providers.ai_video`)**:
+   - Pluggable provider architecture supporting Google Veo, Runway Gen-3/Gen-4, Luma Dream Machine, Kling AI, and local mock testing.
+   - Fallback hierarchy: AI Video -> Stock Footage (Pexels, Pixabay, NASA, Wikimedia) -> Motion Graphics.
+
+7. **Autonomous Video Critic & 10-Point Scorecard (`nova.critic`)**:
+   - 10-point evaluation: Technical Integrity, Audio Sync, Editing Cadence, Scene Variety, Visual Relevance, Caption Readability, Motion Design, Transition Smoothness, Color Consistency, 9:16 Framing.
+   - Generates interactive HTML critic reports (`output/critic_report_<id>.html`) and JSON summaries.
+   - Accessible via Review Studio UI at `/critic/{video_id}`.
+
+8. **Three Production Modes (`--mode`)**:
+   - `fast`: High-speed generation bypassing heavy video rendering and using direct cuts.
+   - `professional`: Full broadcast pipeline with hardware `xfade` transitions, motion graphics, sound design, and color grading (default).
+   - `premium_ai`: Professional pipeline augmented with AI hero video generation when providers are configured.
 
 ---
 

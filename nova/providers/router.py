@@ -22,7 +22,12 @@ class DomainRouter:
     }
 
     def __init__(self, config_path: str | Path = "config/media_providers.yaml"):
-        self.config_path = Path(config_path)
+        p = Path(config_path)
+        if not p.exists():
+            fallback = Path(__file__).resolve().parent.parent.parent / config_path
+            if fallback.exists():
+                p = fallback
+        self.config_path = p
         self.domain_routing: dict[str, list[str]] = self._load_routing()
 
     def _load_routing(self) -> dict[str, list[str]]:

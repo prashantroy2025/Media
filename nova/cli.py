@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 import sys
 
 import uvicorn
@@ -45,6 +46,11 @@ def main():
         help="Force specific niche (default: deficit-balanced)",
     )
     p_run.add_argument("--skip-collect", action="store_true", help="Skip upstream collection stage")
+    p_run.add_argument("--mode", choices=["fast", "professional", "premium_ai"], default="professional", help="Studio production mode (default: professional)")
+    p_run.add_argument("--preset", help="Select creator preset (e.g. viral_facts, documentary, cinematic_storytelling)")
+    p_run.add_argument("--reference-video", help="Path to reference video to replicate style and pacing")
+    p_run.add_argument("--reference-image", help="Path to reference image or screenshot for palette/typography inspiration")
+    p_run.add_argument("--reference-mode", choices=["reference_inspired", "reference_matched_pacing", "reference_matched_composition", "reference_matched_animation", "reference_matched_typography_colors"], default="reference_inspired")
 
     # Command: dry-run
     p_dry = subparsers.add_parser(
@@ -57,6 +63,11 @@ def main():
         help="Force specific niche (default: deficit-balanced)",
     )
     p_dry.add_argument("--skip-collect", action="store_true", help="Skip upstream collection stage")
+    p_dry.add_argument("--mode", choices=["fast", "professional", "premium_ai"], default="professional", help="Studio production mode")
+    p_dry.add_argument("--preset", help="Select creator preset")
+    p_dry.add_argument("--reference-video", help="Path to reference video")
+    p_dry.add_argument("--reference-image", help="Path to reference image")
+    p_dry.add_argument("--reference-mode", default="reference_inspired")
 
     # Command: niches
     p_niches = subparsers.add_parser(
@@ -249,6 +260,15 @@ def main():
     p_library.add_argument("--max-gb", type=float, default=20.0, help="Storage cap in GB")
     p_library.add_argument("--dry-run", action="store_true", default=False, help="Dry run for clean")
 
+    # Command: presets
+    subparsers.add_parser("presets", help="Inspect all 10 professional video editing profiles and parameters")
+
+    # Command: analyze-reference
+    p_an_ref = subparsers.add_parser("analyze-reference", help="Extract editing rhythm, color palette, and style profile from a video or screenshot")
+    p_an_ref.add_argument("reference_file", help="Path to reference video (.mp4/.mov) or screenshot (.jpg/.png)")
+    p_an_ref.add_argument("--mode", default="reference_inspired", choices=["reference_inspired", "reference_matched_pacing", "reference_matched_composition", "reference_matched_animation", "reference_matched_typography_colors"])
+    p_an_ref.add_argument("--name", help="Custom name for the generated profile")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -267,17 +287,79 @@ def main():
         count = max(1, getattr(args, "count", 1))
         forced_niche = getattr(args, "niche", None)
         skip_collect = getattr(args, "skip_collect", False)
+        mode = getattr(args, "mode", "professional")
+        preset = getattr(args, "preset", None)
+        ref_v = Path(args.reference_video) if getattr(args, "reference_video", None) else None
+        ref_img = Path(args.reference_image) if getattr(args, "reference_image", None) else None
+        ref_mode = getattr(args, "reference_mode", "reference_inspired")
         runner = PipelineRunner(settings, db_mgr, dry_run=is_dry)
 
         console.print(
-            f"[bold cyan]Starting batch of {count} video(s) (DryRun={is_dry}, Niche={forced_niche or 'Auto-Balanced'})...[/bold cyan]"
+            f"[bold cyan]Starting batch of {count} video(s) (Mode={mode}, Preset={preset or 'Auto'}, DryRun={is_dry})...[/bold cyan]"
         )
         for i in range(1, count + 1):
             console.print(f"\n[bold yellow]=== VIDEO {i}/{count} ===[/bold yellow]")
-            video = runner.run_full(forced_niche=forced_niche, skip_collect=skip_collect)
+            video = runner.run_full(
+                forced_niche=forced_niche,
+                skip_collect=skip_collect,
+                mode=mode,
+                preset_name=preset,
+                reference_video=ref_v,
+                reference_image=ref_img,
+                reference_mode=ref_mode,
+            )
             console.print(f"[bold green]✓ Video #{video.id} generated at: {video.video_path}[/bold green]")
             if video.quality_flag != "passed":
                 console.print(f"[bold red]⚠ Warning: Quality flag is '{video.quality_flag}'[/bold red]")
+
+    elif args.command == "presets":
+        from nova.presets import list_presets
+        table = Table(title="Nova Autopilot v9.0 — Professional Creator Presets", show_lines=True)
+        table.add_column("Preset ID", style="bold cyan", width=22)
+        table.add_column("Name", style="bold white", width=24)
+        table.add_column("Shot Duration", justify="center", style="green", width=14)
+        table.add_column("Transitions", justify="center", style="yellow", width=14)
+        table.add_column("Captions", style="magenta", width=22)
+        table.add_column("Description", style="dim")
+
+        for p in list_presets():
+            table.add_row(
+                p["preset_id"],
+                p["name"],
+                f"{p['target_shot_min']}s - {p['target_shot_max']}s",
+                p["transition_style"].title(),
+                p["caption_preset"],
+                p["description"],
+            )
+        console.print(table)
+
+    elif args.command == "analyze-reference":
+        from nova.reference_engine import ReferenceAnalyzer
+        ref_file = Path(args.reference_file)
+        if not ref_file.exists():
+            console.print(f"[bold red]Reference file not found: {ref_file}[/bold red]")
+            sys.exit(1)
+
+        analyzer = ReferenceAnalyzer(settings.resolve_path("assets/references"))
+        profile = analyzer.analyze_reference(ref_file, mode=args.mode, profile_name=getattr(args, "name", None))
+
+        table = Table(title=f"Reference Intelligence Profile — {profile.name}", show_lines=True)
+        table.add_column("Metric", style="bold cyan", width=24)
+        table.add_column("Extracted Value", style="bold white")
+
+        table.add_row("Profile ID", profile.profile_id)
+        table.add_row("Source Type", profile.source_type)
+        table.add_row("Total Duration", f"{profile.duration_seconds:.2f}s")
+        table.add_row("Avg Shot Duration", f"{profile.average_shot_duration:.2f}s")
+        table.add_row("Shot Duration Range", f"{profile.shot_duration_range[0]:.2f}s - {profile.shot_duration_range[1]:.2f}s")
+        table.add_row("Cut Frequency", f"{profile.cut_frequency_per_minute:.1f} cuts / min")
+        table.add_row("Preferred Transition", profile.preferred_transition.upper())
+        table.add_row("Motion Intensity", profile.motion_intensity.upper())
+        table.add_row("Color Grading Formula", profile.color_grade_eq)
+        table.add_row("Highlight Color", profile.highlight_color_hex)
+        console.print(table)
+        console.print(f"\n[bold green]✓ Reusable reference profile saved to assets/references/{profile.profile_id}.json[/bold green]")
+        console.print(f"To generate a video inspired by this reference:\n  [cyan]python -m nova run --reference-video {ref_file}[/cyan]\n")
 
     elif args.command == "niches":
         if getattr(args, "reset", False):

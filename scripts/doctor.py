@@ -5,6 +5,7 @@ and prints a rich, formatted PASS/FAIL table across all components.
 """
 
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -234,10 +235,13 @@ def run_doctor():
     # 11. Optional Hosted LLM (Groq / Gemini)
     def check_hosted_llm():
         groq_key = os.getenv("GROQ_API_KEY")
-        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        gemini_key = os.getenv("GEMINI_API_KEYS") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if groq_key:
             return True, "Groq API key configured (llama-3.3-70b-versatile available)"
         if gemini_key:
+            count = len([k for k in re.split(r"[,;\s]+", gemini_key.strip()) if k])
+            if count > 1:
+                return True, f"Gemini API configured ({count} keys in pool, auto-failover enabled)"
             return True, "Gemini API key configured (gemini-3.8-flash available)"
         return False, "No hosted LLM key in .env. Optional: GEMINI_API_KEY=... or GROQ_API_KEY=..."
 
@@ -263,9 +267,13 @@ def run_doctor():
             else:
                 return False, f"Credentials file not found at: {gac}. Place service-account.json in credentials/"
 
-        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        gemini_key = os.getenv("GEMINI_API_KEYS") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if gemini_key:
-            details.append("Gemini API key configured")
+            count = len([k for k in re.split(r"[,;\s]+", gemini_key.strip()) if k])
+            if count > 1:
+                details.append(f"Gemini API keys configured ({count} in pool)")
+            else:
+                details.append("Gemini API key configured")
         if secret_file.exists():
             details.append("YouTube OAuth client secret ready")
 

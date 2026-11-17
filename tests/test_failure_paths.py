@@ -49,6 +49,8 @@ def test_failure_llm_not_running(tmp_path):
 
     settings = load_config()
     settings.llm.ollama.host = "http://127.0.0.1:9999"  # non-existent port
+    settings.llm.gemini.api_key = None
+    settings.llm.groq.api_key = None
     db_mgr = DatabaseManager(tmp_path / "test_llm_fail.db")
     session = db_mgr.session()
 

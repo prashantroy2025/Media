@@ -1,272 +1,284 @@
-# Nova Autopilot Pluggable Media Provider Registry
-# Controls discovery, domain routing, rate limits, and authentication
-
-version: "1.0"
-updated_at: "2026-11-14"
-
-# Domain routing default preferences (ordered by priority)
+version: '1.0'
+updated_at: '2026-11-14'
 domain_routing:
   space:
-    - nasa_library
-    - pixabay
-    - pexels
-    - wikimedia_commons
-    - openverse
+  - nasa_library
+  - pixabay
+  - pexels
+  - wikimedia_commons
+  - openverse
   science:
-    - nasa_library
-    - wikimedia_commons
-    - pixabay
-    - smithsonian
-    - openverse
-    - pexels
+  - nasa_library
+  - wikimedia_commons
+  - pixabay
+  - smithsonian
+  - openverse
+  - pexels
   tech:
-    - pixabay
-    - pexels
-    - openverse
-    - wikimedia_commons
-    - generated_maps
+  - pixabay
+  - pexels
+  - openverse
+  - wikimedia_commons
+  - generated_maps
   business:
-    - sec_gov
-    - pixabay
-    - pexels
-    - openverse
-    - generated_maps
-    - wikimedia_commons
+  - sec_gov
+  - pixabay
+  - pexels
+  - openverse
+  - generated_maps
+  - wikimedia_commons
   history:
-    - met_museum
-    - artic
-    - cleveland_museum
-    - wikimedia_commons
-    - internet_archive
-    - smithsonian
-    - library_of_congress
+  - met_museum
+  - artic
+  - cleveland_museum
+  - wikimedia_commons
+  - internet_archive
+  - smithsonian
+  - library_of_congress
   art:
-    - met_museum
-    - artic
-    - cleveland_museum
-    - europeana
-    - smithsonian
+  - met_museum
+  - artic
+  - cleveland_museum
+  - europeana
+  - smithsonian
   nature:
-    - pixabay
-    - pexels
-    - openverse
-    - wikimedia_commons
-    - smithsonian
-
+  - pixabay
+  - pexels
+  - openverse
+  - wikimedia_commons
+  - smithsonian
 providers:
   pixabay:
-    name: "Pixabay"
+    name: Pixabay
     enabled: true
-    key_env: "PIXABAY_API_KEY"
-    signup_url: "https://pixabay.com/api/docs/"
-    media_types: ["video", "image"]
+    key_env: PIXABAY_API_KEY
+    signup_url: https://pixabay.com/api/docs/
+    media_types:
+    - video
+    - image
     rate_limit_rpm: 100
     cache_ttl_hours: 24
     commercial_cleared: true
     requires_attribution: false
-    notes: "Active key present. Mandatory 24h cache rule honored; local downloads rather than hotlinks."
-
+    notes: Active key present. Mandatory 24h cache rule honored; local downloads rather
+      than hotlinks.
   pexels:
-    name: "Pexels"
+    name: Pexels
     enabled: true
-    key_env: "PEXELS_API_KEY"
-    signup_url: "https://www.pexels.com/api/"
-    media_types: ["video", "image"]
+    key_env: PEXELS_API_KEY
+    signup_url: https://www.pexels.com/api/
+    media_types:
+    - video
+    - image
     rate_limit_rpm: 200
     cache_ttl_hours: 24
     commercial_cleared: true
     requires_attribution: false
-    notes: "Requires free API key. Auto-enables when PEXELS_API_KEY is populated."
-
+    notes: Requires free API key. Auto-enables when PEXELS_API_KEY is populated.
   nasa_library:
-    name: "NASA Image and Video Library"
+    name: NASA Image and Video Library
     enabled: true
     key_env: null
-    signup_url: "https://images.nasa.gov/docs/images.nasa.gov_api_docs.pdf"
-    media_types: ["video", "image"]
+    signup_url: https://images.nasa.gov/docs/images.nasa.gov_api_docs.pdf
+    media_types:
+    - video
+    - image
     rate_limit_rpm: 60
     cache_ttl_hours: 48
     commercial_cleared: true
     requires_attribution: true
-    notes: "Keyless NASA public domain imagery and videos. Dedicated space/science domain routing."
-
+    notes: Keyless NASA public domain imagery and videos. Dedicated space/science
+      domain routing.
   wikimedia_commons:
-    name: "Wikimedia Commons"
+    name: Wikimedia Commons
     enabled: true
     key_env: null
-    signup_url: "https://commons.wikimedia.org/wiki/Commons:API"
-    media_types: ["video", "image"]
+    signup_url: https://commons.wikimedia.org/wiki/Commons:API
+    media_types:
+    - video
+    - image
     rate_limit_rpm: 60
     cache_ttl_hours: 48
     commercial_cleared: true
     requires_attribution: true
-    notes: "Keyless. Strict license filtering: accepts CC0, PDM, CC-BY; strictly rejects CC-BY-SA, NC, ND."
-
+    notes: 'Keyless. Strict license filtering: accepts CC0, PDM, CC-BY; strictly rejects
+      CC-BY-SA, NC, ND.'
   openverse:
-    name: "Openverse"
-    enabled: true
+    name: Openverse
+    enabled: false
     key_env: null
-    signup_url: "https://api.openverse.org/v1/"
-    media_types: ["image", "audio"]
+    signup_url: https://api.openverse.org/v1/
+    media_types:
+    - image
+    - audio
     rate_limit_rpm: 60
     cache_ttl_hours: 24
     commercial_cleared: true
     requires_attribution: true
-    notes: "Keyless multi-collection index. Strict commercial filter parameter active."
-
+    notes: Keyless multi-collection index. Strict commercial filter parameter active.
   internet_archive:
-    name: "Internet Archive (Archive.org)"
+    name: Internet Archive (Archive.org)
     enabled: false
     key_env: null
-    signup_url: "https://archive.org/help/aboutsearch.htm"
-    media_types: ["video", "audio"]
+    signup_url: https://archive.org/help/aboutsearch.htm
+    media_types:
+    - video
+    - audio
     rate_limit_rpm: 30
     cache_ttl_hours: 72
     commercial_cleared: true
     requires_attribution: false
-    notes: "Disabled by default due to high latency and fluctuating mirror bandwidth (>60s download times). Available on-demand."
-
+    notes: Disabled by default due to high latency and fluctuating mirror bandwidth
+      (>60s download times). Available on-demand.
   met_museum:
-    name: "The Metropolitan Museum of Art"
+    name: The Metropolitan Museum of Art
     enabled: true
     key_env: null
-    signup_url: "https://metmuseum.github.io/"
-    media_types: ["image"]
+    signup_url: https://metmuseum.github.io/
+    media_types:
+    - image
     rate_limit_rpm: 80
     cache_ttl_hours: 72
     commercial_cleared: true
     requires_attribution: false
-    notes: "Keyless Open Access API. Only returns items where isPublicDomain is true (CC0)."
-
+    notes: Keyless Open Access API. Only returns items where isPublicDomain is true
+      (CC0).
   artic:
-    name: "Art Institute of Chicago"
+    name: Art Institute of Chicago
     enabled: true
     key_env: null
-    signup_url: "https://api.artic.edu/docs/"
-    media_types: ["image"]
+    signup_url: https://api.artic.edu/docs/
+    media_types:
+    - image
     rate_limit_rpm: 60
     cache_ttl_hours: 72
     commercial_cleared: true
     requires_attribution: false
-    notes: "Keyless API. Only returns items where is_public_domain is true (CC0) with IIIF images."
-
+    notes: Keyless API. Only returns items where is_public_domain is true (CC0) with
+      IIIF images.
   cleveland_museum:
-    name: "Cleveland Museum of Art"
+    name: Cleveland Museum of Art
     enabled: true
     key_env: null
-    signup_url: "https://openaccess-api.clevelandart.org/"
-    media_types: ["image"]
+    signup_url: https://openaccess-api.clevelandart.org/
+    media_types:
+    - image
     rate_limit_rpm: 60
     cache_ttl_hours: 72
     commercial_cleared: true
     requires_attribution: false
-    notes: "Keyless Open Access API. Strict cc0=1&has_image=1 filter."
-
+    notes: Keyless Open Access API. Strict cc0=1&has_image=1 filter.
   smithsonian:
-    name: "Smithsonian Open Access"
+    name: Smithsonian Open Access
     enabled: true
-    key_env: "SMITHSONIAN_API_KEY"
-    signup_url: "https://api.data.gov/signup/"
-    media_types: ["image"]
+    key_env: SMITHSONIAN_API_KEY
+    signup_url: https://api.data.gov/signup/
+    media_types:
+    - image
     rate_limit_rpm: 100
     cache_ttl_hours: 72
     commercial_cleared: true
     requires_attribution: false
-    notes: "Requires free API key from api.data.gov. All open access items are CC0."
-
+    notes: Requires free API key from api.data.gov. All open access items are CC0.
   europeana:
-    name: "Europeana"
+    name: Europeana
     enabled: true
-    key_env: "EUROPEANA_API_KEY"
-    signup_url: "https://www.europeana.eu/"
-    media_types: ["image"]
+    key_env: EUROPEANA_API_KEY
+    signup_url: https://www.europeana.eu/
+    media_types:
+    - image
     rate_limit_rpm: 60
     cache_ttl_hours: 72
     commercial_cleared: true
     requires_attribution: true
-    notes: "Requires free personal API key. Filtered for reusability: open."
-
+    notes: 'Requires free personal API key. Filtered for reusability: open.'
   freesound:
-    name: "Freesound"
+    name: Freesound
     enabled: true
-    key_env: "FREESOUND_API_KEY"
-    signup_url: "https://freesound.org/apiv2/apply/"
-    media_types: ["audio"]
+    key_env: FREESOUND_API_KEY
+    signup_url: https://freesound.org/apiv2/apply/
+    media_types:
+    - audio
     rate_limit_rpm: 60
     cache_ttl_hours: 48
     commercial_cleared: true
     requires_attribution: false
-    notes: "Requires free API key. Filtered strictly for Creative Commons 0."
-
+    notes: Requires free API key. Filtered strictly for Creative Commons 0.
   unsplash:
-    name: "Unsplash"
+    name: Unsplash
     enabled: true
-    key_env: "UNSPLASH_ACCESS_KEY"
-    signup_url: "https://unsplash.com/developers"
-    media_types: ["image"]
+    key_env: UNSPLASH_ACCESS_KEY
+    signup_url: https://unsplash.com/developers
+    media_types:
+    - image
     rate_limit_rpm: 50
     cache_ttl_hours: 24
     commercial_cleared: true
     requires_attribution: true
-    notes: "Requires free developer access key. Unsplash license permits commercial use."
-
+    notes: Requires free developer access key. Unsplash license permits commercial
+      use.
   generated_maps:
-    name: "Generated Maps & Infographics"
+    name: Generated Maps & Infographics
     enabled: true
     key_env: null
     signup_url: null
-    media_types: ["image"]
+    media_types:
+    - image
     rate_limit_rpm: 1000
     cache_ttl_hours: 168
     commercial_cleared: true
     requires_attribution: false
-    notes: "Procedural animated maps, globes, and infographics rendered with Natural Earth CC0 data."
-
+    notes: Procedural animated maps, globes, and infographics rendered with Natural
+      Earth CC0 data.
   sec_gov:
-    name: "U.S. Securities and Exchange Commission (SEC EDGAR)"
+    name: U.S. Securities and Exchange Commission (SEC EDGAR)
     enabled: true
     key_env: null
-    signup_url: "https://www.sec.gov/edgar/searchedgar/companysearch"
-    media_types: ["image"]
+    signup_url: https://www.sec.gov/edgar/searchedgar/companysearch
+    media_types:
+    - image
     rate_limit_rpm: 60
     cache_ttl_hours: 48
     commercial_cleared: true
     requires_attribution: false
-    notes: "Keyless US Government works (17 U.S.C. § 105). Authoritative company tickers and corporate disclosures."
-
+    notes: "Keyless US Government works (17 U.S.C. \xA7 105). Authoritative company\
+      \ tickers and corporate disclosures."
   library_of_congress:
-    name: "Library of Congress"
+    name: Library of Congress
     enabled: true
     key_env: null
-    signup_url: "https://www.loc.gov/search/"
-    media_types: ["image"]
+    signup_url: https://www.loc.gov/search/
+    media_types:
+    - image
     rate_limit_rpm: 30
     cache_ttl_hours: 72
     commercial_cleared: true
     requires_attribution: false
-    notes: "Historical public domain archive. Note: automated requests may be challenged by Cloudflare Bot Management."
-
-  # Providers disabled by default with commercial / licensing conflicts
+    notes: 'Historical public domain archive. Note: automated requests may be challenged
+      by Cloudflare Bot Management.'
   coverr:
-    name: "Coverr"
+    name: Coverr
     enabled: false
     key_env: null
-    signup_url: "https://api.coverr.co/docs"
-    media_types: ["video"]
+    signup_url: https://api.coverr.co/docs
+    media_types:
+    - video
     rate_limit_rpm: 50
     cache_ttl_hours: 24
     commercial_cleared: false
     requires_attribution: true
-    notes: "DISABLED BY DEFAULT. Terms forbid commercial use of videos via free API and require clickable logo."
-
+    notes: DISABLED BY DEFAULT. Terms forbid commercial use of videos via free API
+      and require clickable logo.
   jamendo:
-    name: "Jamendo"
-    enabled: false
+    name: Jamendo
+    enabled: true
     key_env: null
-    signup_url: "https://developer.jamendo.com/v3.0"
-    media_types: ["audio"]
+    signup_url: https://developer.jamendo.com/v3.0
+    media_types:
+    - audio
     rate_limit_rpm: 60
     cache_ttl_hours: 48
     commercial_cleared: false
     requires_attribution: true
-    notes: "DISABLED BY DEFAULT. Free developer API is non-commercial only; free CC tracks trigger YouTube Content ID claims."
+    notes: DISABLED BY DEFAULT. Free developer API is non-commercial only; free CC
+      tracks trigger YouTube Content ID claims.

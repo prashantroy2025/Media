@@ -14,6 +14,9 @@ import hashlib
 import os
 import re
 import subprocess
+
+if "/opt/homebrew/bin" not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"/opt/homebrew/bin:{os.environ.get('PATH', '')}"
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -353,44 +356,105 @@ def fit_image_shot(
         logger.warning(f"PIL pre-sanitization failed for {image_path}: {e}")
         source_input = image_path
 
+    # Check aspect ratio to determine whether to use multi-layer blurred background or direct crop
+    img_aspect = 9.0 / 16.0
     try:
+        with Image.open(source_input) as img_probe:
+            w, h = img_probe.size
+            if h > 0:
+                img_aspect = w / h
+    except Exception:
+        pass
+
+    zoom_expr = None
+    try:
+        from nova.vision.subject_tracker import generate_subject_zoompan_expr
+        zoom_expr = generate_subject_zoompan_expr(
+            source_input,
+            target_duration=t_dur,
+            fps=fps,
+            zoom_factor=1.12,
+            direction=direction,
+        )
+    except Exception as e:
+        logger.warning(f"Subject-aware zoompan fallback to center: {e}")
+
+    if not zoom_expr:
+        zoom_step = round(0.12 / max(1, total_frames), 6)
         if direction == "zoom_out":
-            zoom_expr = f"zoompan=z=\x27if(lte(zoom,1.0),1.15,max(1.001,zoom-0.0008))\x27:d={total_frames}:x=\x27iw/2-(iw/zoom/2)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
+            zoom_expr = f"zoompan=z=\x27if(lte(zoom,1.0),1.12,max(1.001,zoom-{zoom_step}))\x27:d={total_frames}:x=\x27iw/2-(iw/zoom/2)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
         elif direction == "pan_right":
-            zoom_expr = f"zoompan=z=1.12:d={total_frames}:x=\x27(on/{total_frames})*(iw-iw/zoom)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
+            zoom_expr = f"zoompan=z=1.10:d={total_frames}:x=\x27(on/{total_frames})*(iw-iw/zoom)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
         elif direction == "pan_left":
-            zoom_expr = f"zoompan=z=1.12:d={total_frames}:x=\x27(1-(on/{total_frames}))*(iw-iw/zoom)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
+            zoom_expr = f"zoompan=z=1.10:d={total_frames}:x=\x27(1-(on/{total_frames}))*(iw-iw/zoom)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
         else:  # zoom_in default
-            zoom_expr = f"zoompan=z=\x27min(zoom+0.0008,1.15)\x27:d={total_frames}:x=\x27iw/2-(iw/zoom/2)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
+            zoom_expr = f"zoompan=z=\x27min(zoom+{zoom_step},1.12)\x27:d={total_frames}:x=\x27iw/2-(iw/zoom/2)\x27:y=\x27ih/2-(ih/zoom/2)\x27:s=1080x1920:fps={fps}"
 
-        filter_chain = f"scale=1080x1920:force_original_aspect_ratio=increase,crop=1080:1920,{zoom_expr},setsar=1,format=yuv420p"
-
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-loop",
-            "1",
-            "-i",
-            str(source_input.resolve()),
-            "-vf",
-            filter_chain,
-            "-t",
-            str(t_dur),
-            "-r",
-            str(fps),
-            "-fps_mode",
-            "cfr",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "20",
-            "-pix_fmt",
-            "yuv420p",
-            "-an",
-            str(output_video.resolve()),
-        ]
+    try:
+        # If image is landscape or square (aspect > 0.65), use professional multi-layer blurred background
+        # to avoid cutting off 70% of horizontal content
+        if img_aspect > 0.65:
+            filter_complex = (
+                f"[0:v]split[bg][fg];"
+                f"[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5,eq=brightness=-0.12[blurred_bg];"
+                f"[fg]scale=1020:-2[main_fg];"
+                f"[blurred_bg][main_fg]overlay=(W-w)/2:(H-h)/2[comp];"
+                f"[comp]{zoom_expr},setsar=1,format=yuv420p"
+            )
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-loop",
+                "1",
+                "-i",
+                str(source_input.resolve()),
+                "-filter_complex",
+                filter_complex,
+                "-t",
+                str(t_dur),
+                "-r",
+                str(fps),
+                "-fps_mode",
+                "cfr",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-an",
+                str(output_video.resolve()),
+            ]
+        else:
+            filter_chain = f"scale=1080x1920:force_original_aspect_ratio=increase,crop=1080:1920,{zoom_expr},setsar=1,format=yuv420p"
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-loop",
+                "1",
+                "-i",
+                str(source_input.resolve()),
+                "-vf",
+                filter_chain,
+                "-t",
+                str(t_dur),
+                "-r",
+                str(fps),
+                "-fps_mode",
+                "cfr",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-an",
+                str(output_video.resolve()),
+            ]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
         if res.returncode != 0:
             logger.error(f"fit_image_shot failed: {res.stderr}")
@@ -436,6 +500,7 @@ class VisualsManager:
         self.library_searcher = MediaLibrarySearcher()
         self.gemini_client = GeminiClient(settings)
         self.ai_hero_video_generated = False
+        self._procedural_cards_count = 0
 
     def get_sentence_visual(
         self,
@@ -583,13 +648,26 @@ class VisualsManager:
         )
 
     def _clean_queries(self, queries: list[str], main_subject: str, niche: str = "ai_tech") -> list[str]:
+        noise_terms = [
+            "3d render", "animation", "animated", "infographic animation", "infographic",
+            "concept art", "conceptual art", "macro shot", "close up", "illustration",
+            "diagram", "9:16", "vertical", "ultra realistic", "photorealistic", "simulation",
+        ]
         cleaned = []
         for q in queries:
-            c = re.sub(r"[^\w\s]", "", q).strip()
-            if is_valid_visual_query(c) and c not in cleaned:
+            c = re.sub(r"[^\w\s]", "", q).strip().lower()
+            for term in noise_terms:
+                c = re.sub(rf"\b{term}\b", "", c, flags=re.IGNORECASE).strip()
+            c = re.sub(r"\s+", " ", c).strip()
+            if is_valid_visual_query(c) and c not in cleaned and len(c) > 2:
                 cleaned.append(c)
-        if main_subject and is_valid_visual_query(main_subject) and main_subject not in cleaned:
-            cleaned.append(re.sub(r"[^\w\s]", "", main_subject).strip())
+                words = c.split()
+                if len(words) > 3:
+                    short_q = " ".join(words[:2])
+                    if short_q not in cleaned and len(short_q) > 3:
+                        cleaned.append(short_q)
+        if main_subject and is_valid_visual_query(main_subject) and main_subject.lower() not in cleaned:
+            cleaned.append(re.sub(r"[^\w\s]", "", main_subject).strip().lower())
         if not cleaned:
             cleaned = generate_concrete_queries(main_subject, main_subject, niche=niche)
         return cleaned
@@ -969,19 +1047,20 @@ class VisualsManager:
             "User-Agent": "NovaAutopilot/8.0 (https://github.com/nova-autopilot; contact: admin@novastudio.ai)",
             "Accept": "*/*",
         }
-        max_bytes = 25 * 1024 * 1024  # 25 MB max to prevent long network pauses
-        with requests.get(url, headers=headers, stream=True, timeout=8) as r:
+        # 80 MB cap for HD/4K stock video clips, 25 MB cap for images
+        max_bytes = 80 * 1024 * 1024 if clean_ext == ".mp4" else 25 * 1024 * 1024
+        with requests.get(url, headers=headers, stream=True, timeout=12) as r:
             r.raise_for_status()
             c_len = r.headers.get("content-length")
             if c_len and int(c_len) > max_bytes:
-                raise ValueError(f"Asset exceeds maximum 25MB download limit ({int(c_len)/(1024*1024):.1f}MB)")
+                raise ValueError(f"Asset exceeds maximum {max_bytes // (1024*1024)}MB download limit ({int(c_len)/(1024*1024):.1f}MB)")
 
             bytes_written = 0
             with open(cache_file, "wb") as f:
                 for chunk in r.iter_content(chunk_size=32768):
                     bytes_written += len(chunk)
                     if bytes_written > max_bytes:
-                        raise ValueError(f"Asset exceeded 25MB stream cap ({bytes_written/(1024*1024):.1f}MB)")
+                        raise ValueError(f"Asset exceeded {max_bytes // (1024*1024)}MB stream cap ({bytes_written/(1024*1024):.1f}MB)")
                     f.write(chunk)
 
         # Validate that the downloaded image is actually a valid decodeable image (not PDF, HTML, or corrupt bitstream)
@@ -1302,8 +1381,21 @@ class VisualsManager:
                 fit_video_shot(cache_file, dest_shot_path, shot.duration, fps=30)
                 shot.fit_method = "video_fit"
             else:
-                fit_image_shot(cache_file, dest_shot_path, shot.duration, fps=30, direction=direction)
-                shot.fit_method = f"ken_burns_{direction}"
+                use_parallax = getattr(shot, "use_parallax", False) or getattr(shot, "visual_route", "") == "parallax_25d"
+                parallax_rendered = False
+                if use_parallax:
+                    try:
+                        from nova.motion.parallax_25d import render_25d_parallax
+                        p_style = "push_in" if direction == "zoom_in" else ("pull_out" if direction == "zoom_out" else "lateral_drift")
+                        render_25d_parallax(cache_file, dest_shot_path, shot.duration, fps=30, motion_style=p_style)
+                        shot.fit_method = f"parallax_25d_{p_style}"
+                        parallax_rendered = True
+                    except Exception as pe:
+                        logger.warning(f"Parallax 2.5D render failed: {pe}; falling back to subject-aware Ken Burns.")
+
+                if not parallax_rendered:
+                    fit_image_shot(cache_file, dest_shot_path, shot.duration, fps=30, direction=direction)
+                    shot.fit_method = f"ken_burns_{direction}"
 
             if is_illustrative:
                 self._apply_illustrative_badge(dest_shot_path)
@@ -1444,7 +1536,18 @@ class VisualsManager:
             if res.passed:
                 passing_candidates.append((res.total_score, res.is_illustrative, cand))
 
-        passing_candidates.sort(key=lambda x: x[0], reverse=True)
+        # Video-first ranking strategy: prefer actual video footage when relevance is strong (within 12 pts)
+        # Still images remain preferred for historical events, specific documents, portraits, or evidence
+        is_historical_or_doc = beat.is_specific_event or any(
+            w in shot.sentence_text.lower() for w in ("portrait", "photo", "document", "filing", "archive", "ancient", "century")
+        )
+        if not is_historical_or_doc:
+            passing_candidates.sort(
+                key=lambda x: (x[0] + (12.0 if getattr(x[2], "media_type", "") == "video" else 0.0)),
+                reverse=True,
+            )
+        else:
+            passing_candidates.sort(key=lambda x: x[0], reverse=True)
 
         # PHASE 3 ROUTE A: Official or primary source asset (NASA, government/filing)
         if rec_route == "official_document" or (beat.is_specific_event and niche == "space_science"):
@@ -1456,19 +1559,57 @@ class VisualsManager:
                     return asset
 
         # PHASE 3 ROUTE B: Free licensed stock video or image from existing providers
-        if rec_route in ("stock_footage", "stock_image", ""):
+        # Prioritize real video footage when available (video-first strategy)
+        has_video_cand = any(c[2].media_type == "video" for c in passing_candidates if c[0] >= 55.0)
+        if rec_route in ("stock_footage", "stock_image", "") or has_video_cand:
             for score, is_illustrative, cand in passing_candidates:
                 asset = self._materialize_stock_candidate(cand, score, is_illustrative, shot, dest_shot_path, direction, used_set)
                 if asset:
                     return asset
 
+        # PHASE 3 ROUTE SPACE: Cinematic Procedural Deep-Space Starfield
+        is_space_comp = (
+            rec_route == "cinematic_space_environment"
+            or getattr(shot, "visual_route", "") == "cinematic_space_environment"
+            or (niche == "space_science" and any(k in beat.spoken_text.lower() for k in ("sparse star", "never touch", "almost none", "empty space", "star systems")))
+        )
+        if is_space_comp:
+            logger.info(f"[Route Space] Rendering procedural DeepSpaceStarfieldComposition for beat {beat.beat_id}.")
+            from nova.timeline.compositions import DeepSpaceStarfieldComposition
+            comp = DeepSpaceStarfieldComposition(width=1080, height=1920, fps=30)
+            comp.render_to_video(dest_shot_path, duration=shot.duration, fps=30)
+            preview_file = dest_shot_path.with_name(f"{dest_shot_path.stem}_prev.jpg")
+            shot.chosen_asset_id = f"starfield_{beat.beat_id}"
+            shot.provider = "procedural_starfield"
+            shot.media_type = "video"
+            shot.fit_method = "procedural_starfield"
+            shot.asset_file = str(dest_shot_path)
+            shot.normalized_shot_file = str(dest_shot_path)
+            shot.relevance_score = 96.0
+            shot.is_fallback_card = False
+            return VisualAsset(
+                file_path=dest_shot_path,
+                provider="procedural_starfield",
+                asset_id=f"starfield_{beat.beat_id}",
+                creator_name="Nova Celestial Studio Engine",
+                creator_url="",
+                license_name="Generated Motion Asset",
+                asset_url="",
+                relevance_score=96.0,
+                preview_path=str(preview_file),
+                is_fallback_card=False,
+            )
+
         # PHASE 3 ROUTE C: Data and diagram animation rendered by our own templates
         # (for numbers/stats, comparisons, timelines, process flows, or node-and-arrow diagrams)
-        if rec_route in ("data_animation", "diagram_animation") or beat.beat_type in (
-            BeatType.NUMBER_OR_STAT,
-            BeatType.COMPARISON,
-            BeatType.TIMELINE,
+        # Limit to at most 1 procedural card per video to satisfy Quality Gate (<= 10% card ratio)
+        has_cards_already = getattr(self, "_procedural_cards_count", 0)
+        allow_card = (has_cards_already < 1) or (not passing_candidates)
+        if allow_card and (
+            rec_route in ("data_animation", "diagram_animation")
+            or beat.beat_type in (BeatType.NUMBER_OR_STAT, BeatType.COMPARISON, BeatType.TIMELINE)
         ):
+            self._procedural_cards_count = has_cards_already + 1
             logger.info(
                 f"[Route C] Rendering procedural data/diagram animation for beat {beat.beat_id} ({beat.beat_type.value})."
             )
@@ -1539,8 +1680,55 @@ class VisualsManager:
                     ai_scored.sort(key=lambda x: x[0], reverse=True)
                     best_score, best_img = ai_scored[0]
 
-                    # PHASE 3 ROUTE E: Veo Hero Video (max 1 per video, 4-8s, behind veo_enabled)
+                    # PHASE 3 ROUTE E: Hero AI Video via AIVideoProviderFactory (Veo, Runway, Luma, Kling, Mock)
+                    from nova.providers.ai_video import AIVideoProviderFactory
+                    ai_provider = AIVideoProviderFactory.get_provider()
+                    mode_flag = getattr(self.settings, "mode", "") or getattr(getattr(self.settings, "app", None), "mode", "")
                     if (
+                        (rec_route == "ai_video" or mode_flag == "premium_ai")
+                        and ai_provider.is_configured()
+                        and not self.ai_hero_video_generated
+                        and 3.0 <= shot.duration <= 8.0
+                    ):
+                        try:
+                            ai_job = ai_provider.generate_video_from_image(
+                                best_img, prompt=beat.visual_intent, duration_seconds=shot.duration
+                            )
+                            if ai_job.status.value == "completed" and ai_job.output_video_path and Path(ai_job.output_video_path).exists():
+                                self.ai_hero_video_generated = True
+                                ai_vid_path = Path(ai_job.output_video_path)
+                                fit_video_shot(ai_vid_path, dest_shot_path, shot.duration, fps=30)
+                                GeminiClient.apply_ai_illustration_badge(dest_shot_path, dest_shot_path)
+                                preview_file = dest_shot_path.with_name(f"{dest_shot_path.stem}_prev.jpg")
+                                self._extract_preview(dest_shot_path, preview_file)
+
+                                shot.chosen_asset_id = f"{ai_provider.provider_id}_{ai_vid_path.stem}"
+                                shot.provider = ai_provider.provider_id
+                                shot.media_type = "video"
+                                shot.fit_method = "ai_video_hero"
+                                shot.asset_file = str(ai_vid_path)
+                                shot.normalized_shot_file = str(dest_shot_path)
+                                shot.relevance_score = best_score
+                                shot.is_fallback_card = False
+                                shot.on_screen_label = "AI VIDEO GENERATION"
+                                shot.metadata["is_ai_generated"] = True
+                                shot.metadata["needs_synthetic_disclosure"] = True
+
+                                return VisualAsset(
+                                    file_path=dest_shot_path,
+                                    provider=ai_provider.provider_id,
+                                    asset_id=f"{ai_provider.provider_id}_{ai_vid_path.stem}",
+                                    creator_name=f"AI Video ({ai_provider.provider_id})",
+                                    creator_url="",
+                                    license_name="AI-generated",
+                                    asset_url="",
+                                    relevance_score=best_score,
+                                    preview_path=str(preview_file),
+                                    is_fallback_card=False,
+                                )
+                        except Exception as ai_gen_e:
+                            logger.warning(f"AI Video generation failed ({ai_gen_e}); falling back to animated still.")
+                    elif (
                         rec_route == "ai_video"
                         and self.gemini_client.veo_enabled
                         and not self.ai_hero_video_generated
@@ -1613,9 +1801,16 @@ class VisualsManager:
                         is_fallback_card=False,
                     )
             except Exception as ai_e:
-                logger.warning(f"Route D AI generation encountered error ({ai_e}), falling back to procedural animation.")
+                logger.warning(f"Route D AI generation encountered error ({ai_e}), falling back to available stock assets.")
+
+        # Fallback 1: check if we have any passing stock candidates before resorting to procedural card
+        for score, is_illustrative, cand in passing_candidates:
+            asset = self._materialize_stock_candidate(cand, score, is_illustrative, shot, dest_shot_path, direction, used_set)
+            if asset:
+                return asset
 
         # Guaranteed Safe Fallback: Route C Procedural Animation
+        self._procedural_cards_count = getattr(self, "_procedural_cards_count", 0) + 1
         logger.info(
             f"[Route C Fallback] Rendering procedural data/diagram animation for beat {beat.beat_id} ({beat.beat_type.value})."
         )

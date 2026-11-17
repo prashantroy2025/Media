@@ -1,5 +1,6 @@
 """arXiv AI and Machine Learning collector for cutting-edge paper discoveries."""
 
+import os
 import re
 from datetime import UTC, datetime
 

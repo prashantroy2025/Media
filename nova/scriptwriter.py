@@ -721,54 +721,74 @@ Schema format:
         # 1. Try Gemini hosted if configured
         if self.settings.llm.gemini.api_key:
             api_key = self.settings.llm.gemini.api_key
-            model_name = self.settings.llm.gemini.model or "gemini-2.0-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            payload = {
-                "systemInstruction": {"parts": [{"text": system_prompt}]},
-                "contents": [{"parts": [{"text": user_prompt}]}],
-                "generationConfig": {"temperature": 0.5, "responseMimeType": "application/json"},
-            }
-            try:
-                with httpx.Client(timeout=25.0) as client:
-                    res = client.post(url, json=payload)
-                    if res.status_code == 200:
-                        data = res.json()
-                        candidates = data.get("candidates", [])
-                        if candidates and "content" in candidates[0]:
-                            parts = candidates[0]["content"].get("parts", [])
-                            if parts:
-                                self.last_model_used = f"hosted/{model_name}"
-                                logger.info(f"Script generated via hosted Gemini: {model_name}")
-                                return parts[0].get("text", "")
-            except Exception as e:
-                logger.info(f"Hosted Gemini unavailable ({e}). Falling back to local Ollama.")
+            primary_model = self.settings.llm.gemini.model or "gemini-3.5-flash-lite"
+            gemini_candidates = [primary_model]
+            for m in ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]:
+                if m not in gemini_candidates:
+                    gemini_candidates.append(m)
+
+            for model_name in gemini_candidates:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                payload = {
+                    "systemInstruction": {"parts": [{"text": system_prompt}]},
+                    "contents": [{"parts": [{"text": user_prompt}]}],
+                    "generationConfig": {"temperature": 0.5, "responseMimeType": "application/json"},
+                }
+                try:
+                    with httpx.Client(timeout=25.0) as client:
+                        res = client.post(url, json=payload)
+                        if res.status_code == 200:
+                            data = res.json()
+                            candidates = data.get("candidates", [])
+                            if candidates and "content" in candidates[0]:
+                                parts = candidates[0]["content"].get("parts", [])
+                                if parts:
+                                    self.last_model_used = f"hosted/{model_name}"
+                                    logger.info(f"Script generated via hosted Gemini: {model_name}")
+                                    return parts[0].get("text", "")
+                        else:
+                            logger.debug(f"Gemini model {model_name} returned HTTP {res.status_code}")
+                except Exception as e:
+                    logger.debug(f"Gemini model {model_name} failed: {e}")
+
+            logger.info("Hosted Gemini candidates exhausted or unavailable. Trying Groq / Ollama fallback.")
 
         # 2. Try Groq hosted if configured
         if self.settings.llm.groq.api_key:
             groq_key = self.settings.llm.groq.api_key
-            model_name = self.settings.llm.groq.model or "llama-3.3-70b-versatile"
-            url = "https://api.groq.com/openai/v1/chat/completions"
-            payload = {
-                "model": model_name,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.5,
-            }
-            try:
-                with httpx.Client(timeout=25.0, headers={"Authorization": f"Bearer {groq_key}"}) as client:
-                    res = client.post(url, json=payload)
-                    if res.status_code == 200:
-                        data = res.json()
-                        choice = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                        if choice:
-                            self.last_model_used = f"hosted/{model_name}"
-                            logger.info(f"Script generated via hosted Groq: {model_name}")
-                            return choice
-            except Exception as e:
-                logger.info(f"Hosted Groq unavailable ({e}). Falling back to local Ollama.")
+            primary_groq = self.settings.llm.groq.model or "qwen/qwen3.8-27b"
+            groq_candidates = [primary_groq]
+            for gm in ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "openai/gpt-oss-120b"]:
+                if gm not in groq_candidates:
+                    groq_candidates.append(gm)
+
+            for model_name in groq_candidates:
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                payload = {
+                    "model": model_name,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.5,
+                }
+                try:
+                    with httpx.Client(timeout=25.0, headers={"Authorization": f"Bearer {groq_key}"}) as client:
+                        res = client.post(url, json=payload)
+                        if res.status_code == 200:
+                            data = res.json()
+                            choice = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                            if choice:
+                                self.last_model_used = f"hosted/{model_name}"
+                                logger.info(f"Script generated via hosted Groq: {model_name}")
+                                return choice
+                        else:
+                            logger.debug(f"Groq model {model_name} returned HTTP {res.status_code}")
+                except Exception as e:
+                    logger.debug(f"Groq model {model_name} failed: {e}")
+
+            logger.info("Hosted Groq candidates exhausted. Falling back to local Ollama.")
 
         # 3. Local Ollama (default local execution on Apple Silicon)
         url = f"{self.settings.llm.ollama.host}/api/generate"

@@ -14,10 +14,18 @@ from nova.motion.components import (
     AnimatedCounter,
     ComparisonVisual,
     FirstFrameHookCard,
+    InfographicCard,
     KineticTextPop,
+    LocationMarker,
     LowerThirdSourceTag,
     MotionComponent,
     ProgressBar,
+)
+from nova.motion.advanced_components import (
+    ScientificOrbitDiagram,
+    FinancialGrowthChart,
+    GeoMapRadarMarker,
+    DynamicSplitScreen,
 )
 from nova.tts import WordTiming
 
@@ -65,6 +73,14 @@ class MotionPlanBuilder:
             v_intent = s.get("visual_intent", {})
             on_screen_label = v_intent.get("on_screen_label", "") if isinstance(v_intent, dict) else ""
 
+            # Locate start time of sentence in audio
+            s_words = [re.sub(r"[^\w]", "", w.lower()) for w in text.split()]
+            s_start = 0.0
+            for tw, t_start, t_end in timing_map:
+                if tw in s_words[:3]:
+                    s_start = t_start
+                    break
+
             # Check for numbers in this sentence
             num_matches = re.findall(r"\b(\d+(?:,\d+)*(?:\.\d+)?)\s*(billion|million|trillion|hundred|%|tons?|kg|km)?\b", text, re.IGNORECASE)
             if num_matches:
@@ -72,14 +88,6 @@ class MotionPlanBuilder:
                 try:
                     val_clean = float(raw_val_str.replace(",", ""))
                     unit_clean = unit.upper() if unit else ""
-                    # Locate timestamp in audio
-                    s_words = [re.sub(r"[^\w]", "", w.lower()) for w in text.split()]
-                    # Find start time of sentence
-                    s_start = 0.0
-                    for tw, t_start, t_end in timing_map:
-                        if tw in s_words[:3]:
-                            s_start = t_start
-                            break
 
                     if (s_start - last_counter_time) >= 3.0 and s_start > 0.4:
                         components.append(
@@ -115,5 +123,49 @@ class MotionPlanBuilder:
                         )
                     )
                     last_pop_time = label_time
+
+            # 5. Narrative-Driven Specialized Motion Graphics (v9.2)
+            lower_text = text.lower()
+            if (s_start - last_counter_time) >= 3.5 and (s_start - last_pop_time) >= 2.5 and s_start > 3.0:
+                if any(k in lower_text for k in ["black hole", "orbit", "gravity", "gravitational", "accretion", "spiral"]):
+                    components.append(
+                        ScientificOrbitDiagram(
+                            center_title=on_screen_label or "ORBITAL DYNAMICS",
+                            orbiting_label="MASSIVE JET",
+                            start_time=s_start,
+                            duration=2.5,
+                        )
+                    )
+                    last_counter_time = s_start
+                elif any(k in lower_text for k in ["percent", "surge", "growth", "jumped", "revenue", "capacity"]) and "%" in text:
+                    components.append(
+                        FinancialGrowthChart(
+                            headline=on_screen_label or "EXPONENTIAL METRIC",
+                            final_value=num_matches[0][0] + (num_matches[0][1] if num_matches else "%"),
+                            start_time=s_start,
+                            duration=2.5,
+                        )
+                    )
+                    last_counter_time = s_start
+                elif any(k in lower_text for k in ["observatory", "telescope", "station", "location", "facility"]):
+                    components.append(
+                        GeoMapRadarMarker(
+                            location_name=on_screen_label or "DEEP RESEARCH HUB",
+                            coordinates="GLOBAL OBSERVATORY",
+                            start_time=s_start,
+                            duration=2.5,
+                        )
+                    )
+                    last_counter_time = s_start
+                elif any(k in lower_text for k in ["compare", "versus", "against", "difference", "instead of", "assume"]):
+                    components.append(
+                        DynamicSplitScreen(
+                            left_label="COMMON ASSUMPTION",
+                            right_label="OBSERVED FACT",
+                            start_time=s_start,
+                            duration=2.5,
+                        )
+                    )
+                    last_counter_time = s_start
 
         return components
